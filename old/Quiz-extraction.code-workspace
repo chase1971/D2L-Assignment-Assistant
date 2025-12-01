@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../Interface-Project"
+		},
+		{
+			"path": "../File-extraction"
+		},
+		{
+			"path": "../Make-Up-Exam-Macro"
+		},
+		{
+			"path": "../D2L Macro"
+		}
+	],
+	"settings": {}
+}
