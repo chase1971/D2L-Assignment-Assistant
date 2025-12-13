@@ -111,9 +111,13 @@ def main():
         print(f"SUCCESS: Cleanup completed - {deleted_zips} ZIP files and {deleted_folders} folders removed")
         
     except Exception as e:
-        print(f"🗑️ Starting cleanup for {class_name} on {drive}: drive")
-        print(f"❌ Error: {str(e)}")
-        print(f"ERROR: {str(e)}")
+        error_str = str(e).lower()
+        if "being used by another process" in error_str or "locked" in error_str:
+            print("❌ The file is being used by another process")
+        elif "permission denied" in error_str:
+            print("❌ Cannot access file - permission denied")
+        else:
+            print("❌ Unable to read file")
         sys.exit(1)
 
 if __name__ == "__main__":

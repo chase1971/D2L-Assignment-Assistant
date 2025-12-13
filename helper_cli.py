@@ -27,7 +27,7 @@ def list_classes(drive_letter):
     if not rosters_path or not os.path.exists(rosters_path):
         return {
             "success": False,
-            "error": f"Rosters folder not found at {rosters_path}",
+            "error": "Could not find roster folder",
             "rosters_path": rosters_path
         }
     
@@ -136,7 +136,11 @@ def open_folder(drive_letter, class_name):
         if os.path.exists(processing_folder):
             folder_to_open = processing_folder
         elif os.path.exists(class_folder):
-            folder_to_open = class_folder
+            # Class folder exists but processing folder doesn't - return error
+            return {
+                "success": False,
+                "error": "No grade processing folder found"
+            }
         else:
             return {
                 "success": False,

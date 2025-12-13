@@ -46,50 +46,22 @@ def main():
     try:
         logs = []
         
-        # Display header panel
-        console.print()
-        console.print(Panel.fit(
-            f"[bold white]QUIZ PROCESSING[/bold white]\n[cyan]{class_name}[/cyan]",
-            border_style="bright_blue",
-            box=box.DOUBLE
-        ))
-        console.print()
-        
         logs.append("")
         logs.append("=" * 60)
         logs.append(f"QUIZ PROCESSING STARTED")
         logs.append(f"Class: {class_name}")
         logs.append("=" * 60)
         logs.append("")
-        # If specific ZIP file provided, use it directly
-        if specific_zip:
-            if not os.path.exists(specific_zip):
-                console.print("[error]✗ ZIP file not found[/error]")
-                response = {
-                    "success": False,
-                    "error": f"Specified ZIP file not found: {specific_zip}",
-                    "logs": logs + [f"Specified ZIP file not found: {specific_zip}"]
-                }
-                print(json.dumps(response))
-                return
-            
-            selected_zip = specific_zip
-            console.print(f"[success]✓[/success] Using: [cyan]{os.path.basename(selected_zip)}[/cyan]")
-            logs.append("")
-            logs.append(f"Using specified ZIP file: {os.path.basename(selected_zip)}")
-        else:
-            console.print("[info]🔍 Searching Downloads folder...[/info]")
-            logs.append(f"Looking for quiz files in Downloads folder...")
-            
-            # Get configured Downloads path
-            downloads_path = get_downloads_path()
-            
-            # Look for ANY ZIP files
+        
+        # Check for multiple ZIPs FIRST before any console output
+        # This ensures clean JSON response for ZIP selection
+        if not specific_zip:
             import glob
+            downloads_path = get_downloads_path()
             zip_files = glob.glob(os.path.join(downloads_path, "*.zip"))
             
             if not zip_files:
-                console.print("[error]✗ No ZIP files found[/error]")
+                # No ZIP files - return JSON error
                 response = {
                     "success": False,
                     "error": "No ZIP files found in Downloads folder",
@@ -98,55 +70,52 @@ def main():
                 print(json.dumps(response))
                 return
             
-            # If multiple ZIP files, display table and return for user selection
+            # If multiple ZIP files, return for user selection (clean JSON only, no Rich output)
             if len(zip_files) > 1:
-                console.print(f"[warning]⚠ Found {len(zip_files)} ZIP files[/warning]")
-                console.print()
-                
-                # Create a nice table of files
-                table = Table(
-                    title="Available ZIP Files",
-                    box=box.ROUNDED,
-                    header_style="bold cyan",
-                    border_style="bright_blue"
-                )
-                table.add_column("#", style="dim", width=4)
-                table.add_column("Filename", style="white")
-                
-                logs.append("")
-                logs.append(f"Found {len(zip_files)} quiz files:")
-                logs.append("")
-                for i, zip_file in enumerate(zip_files):
-                    table.add_row(str(i+1), os.path.basename(zip_file))
-                    logs.append(f"  {i+1}. {os.path.basename(zip_file)}")
-                
-                console.print(table)
-                console.print()
-                logs.append("")
-                logs.append("Multiple ZIP files found - user selection required")
-                
+                # Don't add ZIP file list to logs - just return JSON for modal
                 # Return list of ZIP files for frontend to handle
                 response = {
                     "success": False,
                     "error": "Multiple ZIP files found",
                     "message": "Please select which ZIP file to process",
                     "zip_files": [{"index": i+1, "filename": os.path.basename(zip_file), "path": zip_file} for i, zip_file in enumerate(zip_files)],
-                    "logs": logs
+                    "logs": logs  # Only include logs up to this point (no file list)
                 }
-                # Output JSON to stdout for backend to parse
+                # Output ONLY JSON to stdout (no Rich formatting that would corrupt JSON parsing)
                 print(json.dumps(response, ensure_ascii=False))
                 return
             
-            # If only one ZIP file, use it automatically
+            # Only one ZIP file - continue with processing
             selected_zip = zip_files[0]
-            console.print(f"[success]✓[/success] Found: [cyan]{os.path.basename(selected_zip)}[/cyan]")
-            logs.append("")
-            logs.append(f"Found 1 quiz file: {os.path.basename(selected_zip)}")
-            logs.append("")
-            logs.append(f"Selected quiz file: {os.path.basename(selected_zip)}")
+        else:
+            selected_zip = specific_zip
+        
+        # Now we can use Rich console output since we're not returning early with JSON
+        console.print()
+        console.print(Panel.fit(
+            f"[bold white]QUIZ PROCESSING[/bold white]\n[cyan]{class_name}[/cyan]",
+            border_style="bright_blue",
+            box=box.DOUBLE
+        ))
+        console.print()
+        
+        # Validate ZIP file exists
+        if not os.path.exists(selected_zip):
+            console.print("[error]✗ ZIP file not found[/error]")
+            response = {
+                "success": False,
+                "error": f"Specified ZIP file not found: {selected_zip}",
+                "logs": logs + [f"Specified ZIP file not found: {selected_zip}"]
+            }
+            print(json.dumps(response))
+            return
+        
+        console.print(f"[success]✓[/success] Using: [cyan]{os.path.basename(selected_zip)}[/cyan]")
+        logs.append("")
+        logs.append(f"Using ZIP file: {os.path.basename(selected_zip)}")
         
         # Import and run the actual grading processor
-        from grading_processor import run_grading_process
+        from grading_processor import run_grading_process, format_error_message
         
         # Run the real processing with progress indicator
         console.print()
@@ -183,7 +152,7 @@ def main():
             logs.append("Processing completed successfully!")
         except Exception as e:
             logs.append("")
-            logs.append(f"Processing failed: {str(e)}")
+            logs.append(format_error_message(e))
             raise
         
         # Note: PDF is opened automatically by grading_processor.py
@@ -214,16 +183,18 @@ def main():
         print(json.dumps(response), file=sys.stderr)
         
     except Exception as e:
-        # Check if it's a wrong class/file error - show friendly message
+        # Check for specific error types and show friendly messages
         error_msg = str(e)
-        if "wrong file" in error_msg.lower() or "wrong class" in error_msg.lower() or "Oops" in error_msg:
-            friendly_error = "Oops. You've chosen the wrong file or class. Try again."
-            logs.append("")
-            logs.append(friendly_error)
+        if "does not contain student assignments" in error_msg:
+            friendly_error = "Zip file does not contain student assignments"
+        elif "can't be opened" in error_msg or "This file can't be opened" in error_msg:
+            friendly_error = "This file can't be opened"
+        elif "wrong file" in error_msg.lower() or "wrong class" in error_msg.lower() or "Oops" in error_msg:
+            friendly_error = "Zip file does not contain student assignments"
         else:
             friendly_error = error_msg
-            logs.append("")
-            logs.append(f"Error: {error_msg}")
+        logs.append("")
+        logs.append(friendly_error)
         
         # Display error panel
         console.print()

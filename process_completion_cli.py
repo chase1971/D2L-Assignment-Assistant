@@ -69,25 +69,18 @@ def main():
                 print(json.dumps(response))
                 return
             
-            # If multiple ZIP files, return list for user selection
+            # If multiple ZIP files, return for user selection (clean JSON only)
             if len(zip_files) > 1:
-                logs.append("")
-                logs.append(f"Found {len(zip_files)} ZIP files:")
-                logs.append("")
-                for i, zip_file in enumerate(zip_files):
-                    logs.append(f"  {i+1}. {os.path.basename(zip_file)}")
-                logs.append("")
-                logs.append("Multiple ZIP files found - user selection required")
-                
+                # Don't add ZIP file list to logs - just return JSON for modal
                 # Return list of ZIP files for frontend to handle
                 response = {
                     "success": False,
                     "error": "Multiple ZIP files found",
                     "message": "Please select which ZIP file to process",
                     "zip_files": [{"index": i+1, "filename": os.path.basename(zip_file), "path": zip_file} for i, zip_file in enumerate(zip_files)],
-                    "logs": logs
+                    "logs": logs  # Only include logs up to this point (no file list)
                 }
-                # Output JSON to stdout for backend to parse
+                # Output ONLY JSON to stdout for backend to parse (no Rich formatting)
                 print(json.dumps(response, ensure_ascii=False))
                 return
             
@@ -99,7 +92,7 @@ def main():
             logs.append(f"Selected ZIP file: {os.path.basename(selected_zip)}")
         
         # Import and run the completion processor
-        from grading_processor import run_completion_process
+        from grading_processor import run_completion_process, format_error_message
         
         # Run the processing
         logs.append("")
@@ -122,7 +115,7 @@ def main():
             logs.append("Completion processing completed successfully!")
         except Exception as e:
             logs.append("")
-            logs.append(f"Processing failed: {str(e)}")
+            logs.append(format_error_message(e))
             raise
         
         # Open the processed PDF and Import File automatically (only if processing was successful)

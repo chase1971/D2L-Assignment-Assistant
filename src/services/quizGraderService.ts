@@ -1,7 +1,8 @@
 // Quiz Grader Service
 // Handles API calls to the backend for quiz grading functionality
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// Use environment variable if available, otherwise fall back to localhost
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export interface ApiResult {
   success: boolean;
@@ -10,6 +11,7 @@ export interface ApiResult {
   classes?: string[];
   zip_files?: Array<{ index: number; filename: string; path: string }>;
   message?: string;
+  killed?: number;  // For killProcesses response
   config?: {
     developerMode?: boolean;
   };
@@ -55,7 +57,16 @@ async function apiCall({ endpoint, body, logMessage, errorMessage, addLog }: Api
     const result = await response.json();
     
     if (addLog && result.logs) {
-      result.logs.forEach((message: string) => addLog(message));
+      result.logs.forEach((message: string) => {
+        // Split multi-line messages and add each line separately
+        const lines = message.split('\n');
+        lines.forEach(line => {
+          const trimmed = line.trim();
+          if (trimmed) {
+            addLog(trimmed);
+          }
+        });
+      });
     }
     
     return result;
@@ -160,10 +171,59 @@ export const clearAllData = (drive: string, selectedClass: string, addLog: LogCa
     addLog
   });
 
+// LogTerminal API functions
+export const killProcesses = (addLog: LogCallback): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/kill-processes',
+    logMessage: '🔄 Killing all Node processes...',
+    errorMessage: 'Failed to kill processes',
+    addLog
+  });
+
+export const openStudentPdf = (drive: string, className: string, studentName: string, addLog: LogCallback): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/open-student-pdf',
+    body: { drive, className, studentName },
+    logMessage: `📂 Opening PDF for: ${studentName}`,
+    errorMessage: 'Error opening PDF',
+    addLog
+  });
+
+export const openCombinedPdf = (drive: string, className: string, addLog: LogCallback): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/open-combined-pdf',
+    body: { drive, className },
+    logMessage: '📂 Opening combined PDF...',
+    errorMessage: 'Error opening PDF',
+    addLog
+  });
+
+export const openImportFile = (drive: string, className: string, addLog: LogCallback): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/open-import-file',
+    body: { drive, className },
+    logMessage: '📂 Opening import file...',
+    errorMessage: 'Error opening import file',
+    addLog
+  });
+
+// Server status check
+export const checkServerStatus = async (timeoutMs: number = 3000): Promise<'online' | 'offline'> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/test`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    return response.ok ? 'online' : 'offline';
+  } catch {
+    return 'offline';
+  }
+};
+
 // Config management functions
 export const getConfig = async (): Promise<ApiResult> => {
   try {
-    const response = await fetch('http://localhost:5000/api/config', {
+    const response = await fetch(`${API_BASE_URL}/config`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -186,7 +246,7 @@ export const getConfig = async (): Promise<ApiResult> => {
 
 export const saveConfig = async (config: Record<string, unknown>): Promise<ApiResult> => {
   try {
-    const response = await fetch('http://localhost:5000/api/config', {
+    const response = await fetch(`${API_BASE_URL}/config`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

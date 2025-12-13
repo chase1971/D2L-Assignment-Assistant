@@ -284,7 +284,7 @@ def rezip_folders(drive, class_name, original_zip_name, log_callback):
             try:
                 import shutil
                 shutil.copy2(temp_index, original_index_path)
-            except:
+            except Exception:
                 pass
             log_callback("   Using original index.html from extraction (exact copy)")
         else:
@@ -389,13 +389,12 @@ def main():
         result = run_reverse_process(drive, class_name, log_callback)
         
         students_count = len(result.submitted) if hasattr(result, 'submitted') else 0
-        logs.append(f"📊 Split PDF for {students_count} students")
+        logs.append(f"✅ Successfully split PDF for {students_count} students")
         
         # Get ZIP name from assignment name (preferred) or fallback to finding most recent
         original_zip_name = None
         if assignment_name:
             original_zip_name = get_zip_name_from_assignment(assignment_name)
-            logs.append(f"📦 Using assignment name: {original_zip_name}")
         else:
             # Fallback: find most recent ZIP in Downloads (legacy behavior)
             downloads_path = get_downloads_path()
@@ -409,13 +408,14 @@ def main():
                 if zip_files:
                     latest_zip = max(zip_files, key=lambda x: os.path.getmtime(x[0]))
                     original_zip_name = latest_zip[1]
-                    logs.append(f"📦 Using most recent ZIP: {original_zip_name}")
         
         rezip_success = False
         if original_zip_name:
             rezip_success = rezip_folders(drive, class_name, original_zip_name, lambda msg: None)  # Suppress rezip logs
             
-            if not rezip_success:
+            if rezip_success:
+                logs.append(f"✅ Created ZIP file: {original_zip_name}")
+            else:
                 processing_errors.append("⚠️ ZIP creation failed, but PDFs were split")
         else:
             processing_errors.append("⚠️ Could not determine ZIP name, skipping rezip")
@@ -428,7 +428,7 @@ def main():
                 logs.append(f"   {error}")
         
         logs.append("")
-        logs.append("✅ Done")
+        logs.append("✅ completed!")
         
         # Output JSON to stdout (for backend)
         response = {
@@ -456,14 +456,11 @@ def main():
         
         # Build simplified error output
         error_logs = []
-        error_logs.append("📦 Starting PDF split and rezip...")
-        error_logs.append(friendly_error)
-        error_logs.append("")
-        error_logs.append("✅ Done")
+        error_logs.append("❌ Split PDF failed")
         
         error_response = {
             "success": False,
-            "error": friendly_error,
+            "error": "Split PDF failed",
             "logs": error_logs
         }
         print(json.dumps(error_response))

@@ -4,52 +4,22 @@ Fixed CLI script for grade extraction - based on working minimal version
 Usage: python extract_grades_cli_fixed.py <drive> <className>
 """
 
-import sys
-import os
+# Standard library
 import json
-import pandas as pd
-import subprocess
+import os
 import platform
-from extract_grades_simple import extract_grades, create_first_pages_pdf
-from config_reader import get_rosters_path
+import subprocess
+import sys
 
-def _names_match_fuzzy(name1, name2, threshold=0.8):
-    """Check if two names match with fuzzy logic"""
-    name1_clean = name1.lower().strip()
-    name2_clean = name2.lower().strip()
-    
-    # If exact match, return True
-    if name1_clean == name2_clean:
-        return True
-    
-    # Split into words
-    words1 = name1_clean.split()
-    words2 = name2_clean.split()
-    
-    # If one name is contained in the other, that's a match
-    if name1_clean in name2_clean or name2_clean in name1_clean:
-        return True
-    
-    # Check if first and last names match (ignoring middle names)
-    if len(words1) >= 2 and len(words2) >= 2:
-        if words1[0] == words2[0] and words1[-1] == words2[-1]:
-            return True
-    
-    # Check if most words match
-    if len(words1) > 0 and len(words2) > 0:
-        matches = 0
-        for word1 in words1:
-            for word2 in words2:
-                if word1 == word2 or (len(word1) > 3 and len(word2) > 3 and 
-                                    (word1 in word2 or word2 in word1)):
-                    matches += 1
-                    break
-        
-        # If threshold% of words match, consider it a match
-        similarity = matches / max(len(words1), len(words2))
-        return similarity >= threshold
-    
-    return False
+# Third-party
+import pandas as pd
+
+# Local
+from config_reader import get_rosters_path
+from extract_grades_simple import extract_grades, create_first_pages_pdf
+from name_matching import names_match_fuzzy
+from import_file_handler import validate_import_file_early
+
 
 def main():
     if len(sys.argv) != 3:
@@ -71,10 +41,31 @@ def main():
             raise Exception("Class folder not found")
         
         class_folder = os.path.join(rosters_path, class_folders[0])
-        grade_processing_folder = os.path.join(class_folder, "grade processing")
-        combined_pdf_path = os.path.join(grade_processing_folder, "PDFs", "1combinedpdf.pdf")
         
-        if not os.path.exists(combined_pdf_path):
+        # Validate import file BEFORE starting extraction
+        is_valid, error_msg = validate_import_file_early(class_folder)
+        if not is_valid:
+            response = {
+                "success": False,
+                "error": error_msg,
+                "logs": ["🔬 Starting grade extraction...", "", error_msg]
+            }
+            print(json.dumps(response))
+            sys.exit(1)
+        
+        grade_processing_folder = os.path.join(class_folder, "grade processing")
+        pdfs_folder = os.path.join(grade_processing_folder, "PDFs")
+        
+        # Find the most recent PDF in the PDFs folder (assignment-named PDFs)
+        combined_pdf_path = None
+        if os.path.exists(pdfs_folder):
+            pdf_files = [f for f in os.listdir(pdfs_folder) if f.endswith('.pdf')]
+            if pdf_files:
+                # Sort by modification time (newest first)
+                pdf_files.sort(key=lambda f: os.path.getmtime(os.path.join(pdfs_folder, f)), reverse=True)
+                combined_pdf_path = os.path.join(pdfs_folder, pdf_files[0])
+        
+        if not combined_pdf_path or not os.path.exists(combined_pdf_path):
             raise Exception("Combined PDF not found")
         
         # Close any open instances of Excel and PDF viewers to avoid file locking
@@ -121,42 +112,93 @@ def main():
                                         "grade": grade,
                                         "confidence": confidence
                                     })
-                                except:
+                                except Exception:
                                     pass
-                except:
+                except Exception:
                     pass
         
         grades_result = extract_grades(combined_pdf_path, log_callback)
         
+        # Initialize error tracking lists BEFORE first use
+        extraction_errors = []
+        low_confidence_students = []
+        skipped_students = []
+        
         if not grades_result:
             extraction_errors.append("❌ No grades were extracted from the PDF")
             grades_result = {}  # Set to empty dict to avoid errors
-        
-        # Collect low confidence students and errors during CSV update
-        low_confidence_students = []
-        extraction_errors = []
-        skipped_students = []
         
         # Update CSV
         import_file_path = os.path.join(class_folder, "Import File.csv")
         if os.path.exists(import_file_path):
             df = pd.read_csv(import_file_path)
             
-            # Find quiz column
+            # Step 0: Validate import file has required columns
+            required_columns = [
+                ("OrgDefinedId", ["org", "defined", "id"]),
+                ("Username", ["username"]),
+                ("First Name", ["first", "name"]),
+                ("Last Name", ["last", "name"]),
+                ("Email", ["email"]),
+            ]
+            
+            missing_columns = []
+            columns_lower = [str(col).lower() for col in df.columns]
+            
+            for friendly_name, patterns in required_columns:
+                found = False
+                for col_lower in columns_lower:
+                    if all(pattern in col_lower for pattern in patterns):
+                        found = True
+                        break
+                if not found:
+                    missing_columns.append(friendly_name)
+            
+            if missing_columns:
+                if len(missing_columns) == 1:
+                    msg = f"The import file is missing the {missing_columns[0]} column."
+                else:
+                    cols_list = ", ".join(missing_columns[:-1]) + f" and {missing_columns[-1]}"
+                    msg = f"The import file is missing the {cols_list} columns."
+                
+                raise Exception(
+                    f"❌ {msg}\n\n"
+                    "Please download a fresh import file from D2L that includes all required columns:\n"
+                    "OrgDefinedId, Username, First Name, Last Name, and Email."
+                )
+            
+            # Step 1: Find End-of-Line Indicator column
+            eol_index = None
+            for i, col in enumerate(df.columns):
+                col_lower = str(col).lower()
+                if 'end' in col_lower and 'line' in col_lower:
+                    eol_index = i
+                    break
+            
+            # If End-of-Line Indicator not found, add it
+            if eol_index is None:
+                # Keep only first 5 columns, add End-of-Line Indicator
+                df = df.iloc[:, :5].copy()
+                df['End-of-Line Indicator'] = '#'
+                eol_index = 5
+            
+            # Step 2: Clean up - delete ALL columns to the right of End-of-Line Indicator
+            if eol_index < len(df.columns) - 1:
+                columns_to_keep = list(df.columns[:eol_index + 1])
+                df = df[columns_to_keep].copy()
+            
+            # Step 3: Find quiz/grade column (the one just before End-of-Line Indicator)
             grade_columns = [col for col in df.columns if 'Points Grade' in col or 'Quiz' in col]
             if grade_columns:
-                quiz_column = grade_columns[0]
+                quiz_column = grade_columns[-1]  # Use the last/most recent grade column
             else:
-                quiz_column = df.columns[-2]
+                # Use column before End-of-Line Indicator
+                quiz_column = df.columns[eol_index - 1] if eol_index > 0 else df.columns[-1]
             
-            # Ensure column G (index 6) exists for "Verify" flag
-            if len(df.columns) <= 6:
-                # Add empty columns if needed to reach column G
-                while len(df.columns) <= 6:
-                    df[f'Column_{len(df.columns)}'] = ''
-                # Set column G (index 6) to have no heading
-                column_g_name = df.columns[6]
-                df.rename(columns={column_g_name: ''}, inplace=True)
+            # Step 4: We'll add Verify column AFTER End-of-Line only if needed
+            # Track if we need to add a verify column
+            needs_verify_column = False
+            verify_rows = []  # List of row indices that need "Verify" flag
             
             # Update grades - collect low confidence students
             updated_count = 0
@@ -217,7 +259,7 @@ def main():
                     for csv_name, idx in csv_name_map.items():
                         # Try multiple strategies for matching with middle names
                         # Strategy 1: Full name fuzzy match
-                        if _names_match_fuzzy(student_name_lower, csv_name, threshold=0.7):
+                        if names_match_fuzzy(student_name_lower, csv_name, threshold=0.7):
                             # Calculate similarity score
                             words1 = set(student_name_lower.split())
                             words2 = set(csv_name.split())
@@ -250,17 +292,19 @@ def main():
                     df.at[matched_idx, quiz_column] = grade
 
                     # Mark "Verify" for low confidence OR fuzzy matches
-                    needs_verify = False
+                    row_needs_verify = False
                     if confidence < 0.7:
-                        needs_verify = True
+                        row_needs_verify = True
                         grade_display = grade if grade else "(no grade found)"
                         low_confidence_students.append(f"{student_name}: {grade_display} (low confidence – needs verification)")
                     elif is_fuzzy_match:
-                        needs_verify = True
+                        row_needs_verify = True
                     
-                    if needs_verify:
-                        # Write "Verify" to column G (index 6)
-                        df.at[matched_idx, df.columns[6]] = "Verify"
+                    if row_needs_verify:
+                        # Track that we need a Verify column
+                        needs_verify_column = True
+                        # Store the row index to mark later
+                        verify_rows.append(matched_idx)
                     
                     updated_count += 1
                 else:
@@ -278,6 +322,20 @@ def main():
             
             # Add matching errors to extraction_errors
             extraction_errors.extend(matching_errors)
+            
+            # Step 5: If any rows need verification, add the Verify column AFTER End-of-Line Indicator
+            if needs_verify_column and verify_rows:
+                # Add a column with empty name (no header) at the end
+                # Use a placeholder that we'll rename to empty
+                verify_col_placeholder = '_verify_temp_'
+                df[verify_col_placeholder] = ''
+                
+                # Mark the rows that need verification
+                for row_idx in verify_rows:
+                    df.at[row_idx, verify_col_placeholder] = 'Verify'
+                
+                # Rename the column to empty string
+                df.rename(columns={verify_col_placeholder: ''}, inplace=True)
             
             # Save updated CSV
             df.to_csv(import_file_path, index=False)
@@ -313,21 +371,20 @@ def main():
         except Exception as e:
             extraction_errors.append(f"⚠️ Could not open files: {str(e)}")
         
-        # Build comprehensive log output
-        logs = []
-        logs.append("🔬 Starting grade extraction...")
-        logs.append("")
+        # Print logs directly to stdout so they show in the frontend
+        print("🔬 Starting grade extraction...")
+        print("")
         
         # Show all extracted grades with confidence levels
         if student_grades:
-            logs.append("📋 EXTRACTED GRADES:")
+            print("📋 EXTRACTED GRADES:")
             for i, sg in enumerate(student_grades, 1):
                 conf = sg['confidence']
                 conf_indicator = "✅" if conf >= 0.7 else "⚠️" if conf >= 0.4 else "❌"
-                logs.append(f"   {i:2d}. {sg['name']}: {sg['grade']} {conf_indicator} (confidence: {conf:.2f})")
+                print(f"   {i:2d}. {sg['name']}: {sg['grade']} {conf_indicator} (confidence: {conf:.2f})")
         elif grades_result:
             # Fallback: show from grades_result if student_grades wasn't populated
-            logs.append("📋 EXTRACTED GRADES:")
+            print("📋 EXTRACTED GRADES:")
             for i, (name, grade_info) in enumerate(grades_result.items(), 1):
                 if isinstance(grade_info, dict):
                     grade = grade_info.get('grade', '')
@@ -336,15 +393,15 @@ def main():
                     grade = str(grade_info)
                     conf = 0
                 conf_indicator = "✅" if conf >= 0.7 else "⚠️" if conf >= 0.4 else "❌"
-                logs.append(f"   {i:2d}. {name}: {grade} {conf_indicator} (confidence: {conf:.2f})")
+                print(f"   {i:2d}. {name}: {grade} {conf_indicator} (confidence: {conf:.2f})")
         
-        logs.append("")
-        logs.append(f"📊 Processed {len(grades_result) if grades_result else 0} students")
+        print("")
+        print(f"📊 Processed {len(grades_result) if grades_result else 0} students")
         
-        # Collect all errors and warnings for red display at the end
+        # Collect all errors and warnings for display at the end
         all_issues = []
         
-        # Show low confidence students (will be displayed in red at end)
+        # Show low confidence students
         if low_confidence_students:
             for student in low_confidence_students:
                 all_issues.append(("WARNING", f"⚠️ {student}"))
@@ -381,64 +438,53 @@ def main():
                             grade_display = grade if grade and grade != "No grade found" else "(no grade found)"
                             all_issues.append(("WARNING", f"⚠️ {name}: {grade_display} (low confidence: {conf:.2f} – needs verification)"))
         
-        logs.append("")
-        logs.append("✅ Done")
+        print("")
+        print("✅ Grade extraction complete!")
         
-        # Display errors and warnings in red at the end
+        # Display errors and warnings at the end
         if all_issues:
-            logs.append("")
-            logs.append("=" * 60)
-            logs.append("⚠️ ISSUES FOUND (Please Review):")
-            logs.append("=" * 60)
+            print("")
+            print("⚠️ ISSUES FOUND (Please Review):")
             for issue_type, issue_msg in all_issues:
                 # Remove any existing error/warning symbols to avoid duplicates
                 clean_msg = issue_msg.replace("❌ ", "").replace("⚠️ ", "").strip()
-                # Mark with red indicator - actual red coloring would need terminal support
                 if issue_type == "ERROR":
-                    logs.append(f"❌ {clean_msg}")
+                    print(f"   ❌ {clean_msg}")
                 else:
-                    logs.append(f"⚠️  {clean_msg}")
-        
-        response = {
-            "success": True,
-            "message": "Grade extraction completed",
-            "logs": logs
-        }
-        
-        # Print JSON to stderr so it doesn't interfere with logs
-        print(json.dumps(response), file=sys.stderr)
+                    print(f"   ⚠️ {clean_msg}")
         
     except Exception as e:
         error_msg = str(e)
         
         # Determine friendly error message
-        if "Oops" in error_msg or "wrong file" in error_msg.lower() or "wrong class" in error_msg.lower():
-            # This is a wrong file/class error - use the existing friendly message
+        if "missing" in error_msg.lower() and "column" in error_msg.lower():
+            # This is a missing column error - use as-is (already has ❌)
             friendly_error = error_msg
-        elif "empty" in error_msg.lower() or "could not be read" in error_msg.lower() or "could not convert" in error_msg.lower():
-            # This is likely because Process Quizzes wasn't run first
-            friendly_error = "Something went wrong with the extraction. Make sure you've run 'Process Quizzes' or 'Process Completion' first."
+        elif "not found" in error_msg.lower() and "import" in error_msg.lower():
+            # Import file not found - use as-is (already has ❌)
+            friendly_error = error_msg
+        elif "cannot be opened" in error_msg.lower() or "locked" in error_msg.lower() or "corrupted" in error_msg.lower() or "empty" in error_msg.lower():
+            # Import file error - use as-is (already has ❌)
+            friendly_error = error_msg
+        elif "Oops" in error_msg or "wrong file" in error_msg.lower() or "wrong class" in error_msg.lower():
+            friendly_error = error_msg
         elif error_msg and error_msg.strip():
-            # There's a specific error message - use it
-            friendly_error = f"Something went wrong with the extraction: {error_msg}"
+            # If it doesn't start with ❌, add it and remove "Error:" prefix
+            if not error_msg.startswith("❌"):
+                # Remove "Error:" prefix if present
+                clean_msg = error_msg.replace("Error:", "").replace("error:", "").strip()
+                friendly_error = f"❌ {clean_msg}"
+            else:
+                friendly_error = error_msg
         else:
-            # Unknown error
-            friendly_error = "It ran into a problem."
-        
-        # Build simplified error output
-        error_logs = []
-        error_logs.append("🔬 Starting grade extraction...")
-        error_logs.append(friendly_error)
-        error_logs.append("")
-        error_logs.append("✅ Done")
+            friendly_error = "❌ Extraction failed"
         
         error_response = {
             "success": False,
             "error": friendly_error,
-            "logs": error_logs
+            "logs": ["🔬 Starting grade extraction...", "", friendly_error]
         }
-        # Print JSON to stderr so it doesn't interfere with logs
-        print(json.dumps(error_response), file=sys.stderr)
+        print(json.dumps(error_response))
         sys.exit(1)
 
 if __name__ == "__main__":

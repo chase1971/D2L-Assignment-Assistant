@@ -17,6 +17,9 @@ const app = express();
 const DEFAULT_PORT = 5000;
 let PORT = DEFAULT_PORT;
 
+// Constants
+const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB buffer for Python script output
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -105,6 +108,19 @@ const SCRIPTS_PATH = process.resourcesPath
 // Standard API response helper
 function apiResponse(res, { success, logs = [], error = null, ...extra }) {
   res.json({ success, logs, error: success ? null : error, ...extra });
+}
+
+// Input validation helpers
+function validateClassName(className) {
+  if (!className || typeof className !== 'string') return false;
+  // Block shell metacharacters that could be used for injection
+  return !/[;&|`$(){}[\]<>]/.test(className);
+}
+
+function validateDrive(drive) {
+  if (!drive || typeof drive !== 'string') return false;
+  // Drive should be a single letter
+  return /^[A-Za-z]$/.test(drive);
 }
 
 // Get possible rosters paths (mirrors Python config_reader.py logic)
@@ -217,7 +233,7 @@ async function runPythonScript(scriptName, args = []) {
     const proc = exec(command, {
       cwd: SCRIPTS_PATH,
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-      maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+      maxBuffer: MAX_BUFFER_SIZE
     });
 
     let stdout = '';
@@ -257,17 +273,17 @@ async function runPythonScript(scriptName, args = []) {
 
 // Test endpoint
 app.get('/api/test', (req, res) => {
-  res.json({ success: true, message: 'Backend server is running!' });
+  apiResponse(res, { success: true, message: 'Backend server is running!' });
 });
 
 // Config endpoints
 app.get('/api/config', (req, res) => {
-  res.json({ success: true, config: loadConfig() });
+  apiResponse(res, { success: true, config: loadConfig() });
 });
 
 app.post('/api/config', (req, res) => {
   const success = saveConfig(req.body);
-  res.json({ success, config: success ? req.body : null });
+  apiResponse(res, { success, config: success ? req.body : null, error: success ? null : 'Failed to save config' });
 });
 
 // Quiz routes
@@ -286,15 +302,20 @@ app.post('/api/quiz/list-classes', async (req, res) => {
       });
     }
     
-    res.json({ success: result.success, classes, logs: result.output.split('\n').filter(l => l.trim()) });
+    apiResponse(res, { success: result.success, classes, logs: result.output.split('\n').filter(l => l.trim()) });
   } catch (error) {
-    res.json({ success: false, error: error.message });
+    apiResponse(res, { success: false, error: error.message });
   }
 });
 
 app.post('/api/quiz/process', async (req, res) => {
   try {
     const { drive, className } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
     const result = await runPythonScript('process_quiz_cli.py', [drive || 'C', className]);
     
     // Check for multiple ZIP files
@@ -304,14 +325,14 @@ app.post('/api/quiz/process', async (req, res) => {
         success: false,
         error: 'Multiple ZIP files found',
         zip_files: zipResult.zipFiles,
-        logs: zipResult.logs
+        logs: []  // Don't include logs - modal will show, no need for terminal output
       });
     }
     
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
-      error: result.error || 'Processing failed'
+      ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
@@ -321,12 +342,17 @@ app.post('/api/quiz/process', async (req, res) => {
 app.post('/api/quiz/process-selected', async (req, res) => {
   try {
     const { drive, className, zipPath } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
     const result = await runPythonScript('process_quiz_cli.py', [drive || 'C', className, zipPath]);
     
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
-      error: result.error || 'Processing failed'
+      ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
@@ -336,6 +362,11 @@ app.post('/api/quiz/process-selected', async (req, res) => {
 app.post('/api/quiz/process-completion', async (req, res) => {
   try {
     const { drive, className, dontOverride } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
     const args = [drive || 'C', className];
     if (dontOverride) args.push('--dont-override');
     
@@ -348,14 +379,14 @@ app.post('/api/quiz/process-completion', async (req, res) => {
         success: false,
         error: 'Multiple ZIP files found',
         zip_files: zipResult.zipFiles,
-        logs: zipResult.logs
+        logs: []  // Don't include logs - modal will show, no need for terminal output
       });
     }
     
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
-      error: result.error || 'Processing failed'
+      ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
@@ -365,6 +396,11 @@ app.post('/api/quiz/process-completion', async (req, res) => {
 app.post('/api/quiz/process-completion-selected', async (req, res) => {
   try {
     const { drive, className, zipPath, dontOverride } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
     const args = [drive || 'C', className, zipPath];
     if (dontOverride) args.push('--dont-override');
     
@@ -373,7 +409,7 @@ app.post('/api/quiz/process-completion-selected', async (req, res) => {
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
-      error: result.error || 'Processing failed'
+      ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
@@ -383,12 +419,54 @@ app.post('/api/quiz/process-completion-selected', async (req, res) => {
 app.post('/api/quiz/extract-grades', async (req, res) => {
   try {
     const { drive, className } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
     const result = await runPythonScript('extract_grades_cli.py', [drive || 'C', className]);
     
+    // Check if output is JSON (Python script returned structured response)
+    let logs = [];
+    let error = null;
+    let success = result.success;
+    
+    try {
+      // Try to parse the entire output as JSON first (Python script may output pure JSON)
+      const trimmedOutput = result.output.trim();
+      if (trimmedOutput.startsWith('{')) {
+        const jsonData = JSON.parse(trimmedOutput);
+        success = jsonData.success !== false; // Explicitly check for false
+        logs = jsonData.logs || [];
+        error = jsonData.error || null;
+      } else {
+        // Try to find JSON in the output (might be mixed with other text)
+        const jsonMatch = trimmedOutput.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const jsonData = JSON.parse(jsonMatch[0]);
+          success = jsonData.success !== false;
+          logs = jsonData.logs || [];
+          error = jsonData.error || null;
+        } else {
+          // Not JSON, treat as plain text logs
+          logs = result.output.split('\n').filter(l => l.trim());
+          if (!result.success) {
+            error = result.error || 'Extraction failed';
+          }
+        }
+      }
+    } catch (parseError) {
+      // If JSON parsing fails, fall back to plain text
+      logs = result.output.split('\n').filter(l => l.trim());
+      if (!result.success) {
+        error = result.error || 'Extraction failed';
+      }
+    }
+    
     apiResponse(res, {
-      success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
-      error: result.error || 'Extraction failed'
+      success,
+      logs,
+      ...(success ? {} : { error: error || 'Extraction failed' })
     });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
@@ -398,6 +476,11 @@ app.post('/api/quiz/extract-grades', async (req, res) => {
 app.post('/api/quiz/split-pdf', async (req, res) => {
   try {
     const { drive, className, assignmentName } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
     const args = [drive || 'C', className];
     if (assignmentName) {
       args.push(assignmentName);
@@ -407,7 +490,7 @@ app.post('/api/quiz/split-pdf', async (req, res) => {
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
-      error: result.error || 'Split failed'
+      ...(result.success ? {} : { error: result.error || 'Split failed' })
     });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
@@ -420,11 +503,16 @@ app.post('/api/quiz/open-folder', async (req, res) => {
     
     // Handle DOWNLOADS special case
     if (className === 'DOWNLOADS') {
+      // No validation needed for special DOWNLOADS case
       const downloadsPath = loadConfig().downloadsPath || path.join(os.homedir(), 'Downloads');
       const { exec } = require('child_process');
       exec(`explorer "${downloadsPath}"`);
-      res.json({ success: true, message: 'Downloads folder opened', logs: ['📂 Downloads folder opened'] });
+      apiResponse(res, { success: true, message: 'Downloads folder opened', logs: ['📂 Downloads folder opened'] });
       return;
+    }
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
     }
     
     const result = await runPythonScript('helper_cli.py', ['open-folder', drive || 'C', className]);
@@ -445,26 +533,31 @@ app.post('/api/quiz/open-folder', async (req, res) => {
       logs.push(`❌ ${pythonResult.error || 'Failed to open folder'}`);
     }
     
-    res.json({ 
+    apiResponse(res, { 
       success: pythonResult.success, 
       logs: logs,
       message: pythonResult.message || pythonResult.error,
-      error: pythonResult.success ? null : (pythonResult.error || 'Failed to open folder')
+      ...(pythonResult.success ? {} : { error: pythonResult.error || 'Failed to open folder' })
     });
   } catch (error) {
-    res.json({ success: false, error: error.message, logs: [`❌ ${error.message}`] });
+    apiResponse(res, { success: false, error: error.message, logs: [`❌ ${error.message}`] });
   }
 });
 
 app.post('/api/quiz/clear-data', async (req, res) => {
   try {
     const { drive, className } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
     const result = await runPythonScript('cleanup_data_cli.py', [drive || 'C', className]);
     
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
-      error: result.error || 'Clear failed'
+      ...(result.success ? {} : { error: result.error || 'Clear failed' })
     });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
@@ -477,30 +570,27 @@ app.post('/api/open-file', async (req, res) => {
     const { filePath } = req.body;
     
     if (!filePath) {
-      res.json({ success: false, error: 'No file path provided' });
-      return;
+      return apiResponse(res, { success: false, error: 'No file path provided' });
     }
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
-      res.json({ success: false, error: 'File not found' });
-      return;
+      return apiResponse(res, { success: false, error: 'File not found' });
     }
     
     writeLog(`Opening file: ${filePath}`);
     
     // Open file with default application
-    const { exec } = require('child_process');
     exec(`start "" "${filePath}"`, (error) => {
       if (error) {
         writeLog(`Error opening file: ${error.message}`, true);
-        res.json({ success: false, error: error.message });
+        apiResponse(res, { success: false, error: error.message });
       } else {
-        res.json({ success: true, message: 'File opened' });
+        apiResponse(res, { success: true, message: 'File opened' });
       }
     });
   } catch (error) {
-    res.json({ success: false, error: error.message });
+    apiResponse(res, { success: false, error: error.message });
   }
 });
 
@@ -510,13 +600,13 @@ app.post('/api/open-student-pdf', async (req, res) => {
     const { drive, className, studentName } = req.body;
     
     if (!drive || !className || !studentName) {
-      return res.json({ success: false, error: 'Missing required parameters' });
+      return apiResponse(res, { success: false, error: 'Missing required parameters' });
     }
     
     // Find PDFs folder using helper
     const folders = findPdfsFolder(drive, className);
     if (!folders) {
-      return res.json({ success: false, error: 'Class folder not found' });
+      return apiResponse(res, { success: false, error: 'Class folder not found' });
     }
     
     const { pdfsFolder, importFilePath } = folders;
@@ -588,19 +678,19 @@ app.post('/api/open-student-pdf', async (req, res) => {
     }
     
     if (!pdfPath) {
-      return res.json({ success: false, error: `PDF not found for ${studentName}` });
+      return apiResponse(res, { success: false, error: `PDF not found for ${studentName}` });
     }
     
     writeLog(`Opening PDF: ${pdfPath}`);
     exec(`start "" "${pdfPath}"`, (error) => {
       if (error) {
-        res.json({ success: false, error: error.message });
+        apiResponse(res, { success: false, error: error.message });
       } else {
-        res.json({ success: true, message: 'PDF opened' });
+        apiResponse(res, { success: true, message: 'PDF opened' });
       }
     });
   } catch (error) {
-    res.json({ success: false, error: error.message });
+    apiResponse(res, { success: false, error: error.message });
   }
 });
 
@@ -610,56 +700,99 @@ app.post('/api/open-combined-pdf', async (req, res) => {
     const { drive, className } = req.body;
     
     if (!drive || !className) {
-      return res.json({ success: false, error: 'Missing required parameters' });
+      return apiResponse(res, { success: false, error: 'Missing required parameters' });
     }
     
     // Find PDFs folder using helper
     const folders = findPdfsFolder(drive, className);
     if (!folders) {
-      return res.json({ success: false, error: 'Combined PDF not found - class folder not found' });
+      return apiResponse(res, { success: false, error: 'Combined PDF not found - class folder not found' });
     }
     
-    const combinedPdf = path.join(folders.pdfsFolder, '1combinedpdf.pdf');
+    // Find the most recent PDF in the folder (assignment-named PDFs)
+    let combinedPdf = null;
+    if (fs.existsSync(folders.pdfsFolder)) {
+      const pdfFiles = fs.readdirSync(folders.pdfsFolder)
+        .filter(f => f.endsWith('.pdf'))
+        .map(f => ({ name: f, mtime: fs.statSync(path.join(folders.pdfsFolder, f)).mtime }))
+        .sort((a, b) => b.mtime - a.mtime);
+      
+      if (pdfFiles.length > 0) {
+        combinedPdf = path.join(folders.pdfsFolder, pdfFiles[0].name);
+      }
+    }
     
-    if (!fs.existsSync(combinedPdf)) {
-      return res.json({ success: false, error: 'Combined PDF not found' });
+    if (!combinedPdf || !fs.existsSync(combinedPdf)) {
+      return apiResponse(res, { success: false, error: 'Combined PDF not found' });
     }
     
     writeLog(`Opening combined PDF: ${combinedPdf}`);
     exec(`start "" "${combinedPdf}"`, (error) => {
       if (error) {
-        res.json({ success: false, error: error.message });
+        apiResponse(res, { success: false, error: error.message });
       } else {
-        res.json({ success: true, message: 'PDF opened' });
+        apiResponse(res, { success: true, message: 'PDF opened' });
       }
     });
   } catch (error) {
-    res.json({ success: false, error: error.message });
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Open import file (CSV/Excel)
+app.post('/api/open-import-file', async (req, res) => {
+  try {
+    const { drive, className } = req.body;
+    
+    if (!drive || !className) {
+      return apiResponse(res, { success: false, error: 'Missing required parameters' });
+    }
+    
+    // Find the import file using helper
+    const folders = findPdfsFolder(drive, className);
+    if (!folders) {
+      return apiResponse(res, { success: false, error: 'Class folder not found' });
+    }
+    
+    const { importFilePath } = folders;
+    
+    if (!fs.existsSync(importFilePath)) {
+      return apiResponse(res, { success: false, error: 'Import File not found' });
+    }
+    
+    writeLog(`Opening import file: ${importFilePath}`);
+    exec(`start "" "${importFilePath}"`, (error) => {
+      if (error) {
+        apiResponse(res, { success: false, error: error.message });
+      } else {
+        apiResponse(res, { success: true, message: 'Import file opened', path: importFilePath });
+      }
+    });
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
   }
 });
 
 // Kill all Node processes
 app.post('/api/kill-processes', async (req, res) => {
   try {
-    const { exec } = require('child_process');
-    
     // Use PowerShell to kill Node processes (excluding current one)
     const command = `powershell -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne ${process.pid} } | Stop-Process -Force"`;
     
     exec(command, (error, stdout, stderr) => {
       if (error && !error.message.includes('Cannot find a process')) {
-        res.json({ success: false, error: error.message });
+        apiResponse(res, { success: false, error: error.message });
       } else {
         // Count how many were killed
         exec('powershell -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count"', (err, output) => {
           const remaining = parseInt(output.trim()) || 0;
           const killed = remaining > 1 ? remaining - 1 : 0; // Subtract current process
-          res.json({ success: true, killed, message: 'Processes killed' });
+          apiResponse(res, { success: true, killed, message: 'Processes killed' });
         });
       }
     });
   } catch (error) {
-    res.json({ success: false, error: error.message });
+    apiResponse(res, { success: false, error: error.message });
   }
 });
 
