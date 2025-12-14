@@ -3,11 +3,51 @@
 import os
 import subprocess
 import platform
-from typing import Optional, Tuple, Set, Dict, Any, Callable
+import time
+from typing import Optional, Tuple, Set, Dict, Any, Callable, List
 
 import pandas as pd
 
 from name_matching import names_match_fuzzy
+from grading_constants import REQUIRED_COLUMNS_COUNT, END_OF_LINE_COLUMN_INDEX, CONFIDENCE_HIGH
+
+
+def validate_required_columns(df: pd.DataFrame) -> Tuple[bool, Optional[List[str]]]:
+    """
+    Validate that the DataFrame has all required columns.
+    
+    Args:
+        df: DataFrame to validate
+    
+    Returns:
+        Tuple of (is_valid, missing_columns_list)
+        - is_valid: True if all required columns exist
+        - missing_columns_list: List of missing column friendly names, or None if all present
+    """
+    required_columns = [
+        ("OrgDefinedId", ["org", "defined", "id"]),
+        ("Username", ["username"]),
+        ("First Name", ["first", "name"]),
+        ("Last Name", ["last", "name"]),
+        ("Email", ["email"]),
+    ]
+    
+    missing_columns = []
+    columns_lower = [str(col).lower() for col in df.columns]
+    
+    for friendly_name, patterns in required_columns:
+        found = False
+        for col_lower in columns_lower:
+            if all(pattern in col_lower for pattern in patterns):
+                found = True
+                break
+        
+        if not found:
+            missing_columns.append(friendly_name)
+    
+    if missing_columns:
+        return False, missing_columns
+    return True, None
 
 
 def _close_excel_for_file(file_path: str, log_callback: Optional[Callable[[str], None]] = None) -> bool:
@@ -50,31 +90,9 @@ def _validate_and_fix_import_file(
     
     Returns the fixed DataFrame, or raises an exception if unfixable.
     """
-    # Define required columns and how to find them
-    required_columns = [
-        ("OrgDefinedId", ["org", "defined", "id"]),
-        ("Username", ["username"]),
-        ("First Name", ["first", "name"]),
-        ("Last Name", ["last", "name"]),
-        ("Email", ["email"]),
-    ]
-    
-    # Check each required column
-    missing_columns = []
-    columns_lower = [str(col).lower() for col in df.columns]
-    
-    for friendly_name, patterns in required_columns:
-        found = False
-        for i, col_lower in enumerate(columns_lower):
-            # Check if all patterns are in the column name
-            if all(pattern in col_lower for pattern in patterns):
-                found = True
-                break
-        
-        if not found:
-            missing_columns.append(friendly_name)
-    
-    if missing_columns:
+    # Validate required columns using shared function
+    is_valid, missing_columns = validate_required_columns(df)
+    if not is_valid:
         if len(missing_columns) == 1:
             msg = f"The import file is missing the {missing_columns[0]} column."
         else:
@@ -102,7 +120,7 @@ def _validate_and_fix_import_file(
             log_callback("   ⚠️  End-of-Line Indicator not found - adding it to column F")
         
         # Keep only the first 5 columns, then add End-of-Line Indicator
-        df = df.iloc[:, :5].copy()
+        df = df.iloc[:, :REQUIRED_COLUMNS_COUNT].copy()
         df['End-of-Line Indicator'] = '#'
         
         # Save the fixed file
@@ -149,28 +167,9 @@ def validate_import_file_early(
         else:
             return False, "❌ Unable to read file"
     
-    # Check for required columns
-    required_columns = [
-        ("OrgDefinedId", ["org", "defined", "id"]),
-        ("Username", ["username"]),
-        ("First Name", ["first", "name"]),
-        ("Last Name", ["last", "name"]),
-        ("Email", ["email"]),
-    ]
-    
-    missing_columns = []
-    columns_lower = [str(col).lower() for col in df.columns]
-    
-    for friendly_name, patterns in required_columns:
-        found = False
-        for col_lower in columns_lower:
-            if all(pattern in col_lower for pattern in patterns):
-                found = True
-                break
-        if not found:
-            missing_columns.append(friendly_name)
-    
-    if missing_columns:
+    # Check for required columns using shared function
+    is_valid, missing_columns = validate_required_columns(df)
+    if not is_valid:
         if len(missing_columns) == 1:
             msg = f"❌ The import file is missing the {missing_columns[0]} column."
         else:
@@ -184,6 +183,51 @@ def validate_import_file_early(
         )
     
     return True, None
+
+
+def validate_import_file_early(class_folder_path: str) -> Tuple[bool, str]:
+    """
+    Validate Import File structure early before processing.
+    Checks for required columns without modifying the file.
+    
+    Args:
+        class_folder_path: Path to the class folder
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    import_file_path = os.path.join(class_folder_path, "Import File.csv")
+    
+    if not os.path.exists(import_file_path):
+        return False, f"Import File not found: {import_file_path}"
+    
+    try:
+        df = pd.read_csv(import_file_path, dtype=str)
+    except Exception as e:
+        error_str = str(e).lower()
+        if "being used by another process" in error_str or "locked" in error_str:
+            return False, "Import File is being used by another process. Please close Excel and try again."
+        elif "permission denied" in error_str:
+            return False, "Cannot access Import File - permission denied"
+        else:
+            return False, f"Error reading Import File: {str(e)}"
+    
+    # Check for required columns (first 5 columns of Import File)
+    # OrgDefinedId, Username, First Name, Last Name, Email
+    required_columns = ['OrgDefinedId', 'Username', 'First Name', 'Last Name', 'Email']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    
+    if missing_columns:
+        return False, f"Import File is missing required column(s): {', '.join(missing_columns)}"
+    
+    # For completion processing, we need at least these 5 columns
+    if len(df.columns) < 5:
+        return False, (
+            "Import File doesn't have enough columns. "
+            "Expected: OrgDefinedId, Username, First Name, Last Name, Email"
+        )
+    
+    return True, ""
 
 
 def load_import_file(
@@ -329,7 +373,7 @@ def _find_end_of_line_indicator_index(import_df: pd.DataFrame) -> int:
     # Fallback: column 5 (index 5) if we have at least 6 columns
     # Structure: [0:OrgDefinedId, 1:Username, 2:FirstName, 3:LastName, 4:Email, 5:End-of-Line]
     if len(import_df.columns) >= 6:
-        return 5
+        return END_OF_LINE_COLUMN_INDEX
     return len(import_df.columns) - 1
 
 
@@ -362,10 +406,10 @@ def _handle_dont_override_mode(
         log_callback(f"   Mode: Don't override - adding new column before End-of-Line Indicator")
     
     # Ensure we have at least 5 columns (A-E)
-    if len(import_df.columns) < 5:
+    if len(import_df.columns) < REQUIRED_COLUMNS_COUNT:
         if log_callback:
-            log_callback(f"   Warning: Less than 5 columns, adding empty columns")
-        while len(import_df.columns) < 5:
+            log_callback(f"   Warning: Less than {REQUIRED_COLUMNS_COUNT} columns, adding empty columns")
+        while len(import_df.columns) < REQUIRED_COLUMNS_COUNT:
             # Use empty string for column name to avoid "Unnamed" issues
             import_df[f'_temp_col_{len(import_df.columns)}'] = ""
     
@@ -398,24 +442,24 @@ def _handle_override_mode(
     eol_col_name = import_df.columns[eol_index]
     
     # First 5 columns are fixed: OrgDefinedId, Username, First Name, Last Name, Email
-    first_five_columns = list(import_df.columns[:5])
+    first_five_columns = list(import_df.columns[:REQUIRED_COLUMNS_COUNT])
     
     if log_callback:
-        log_callback(f"   Fixed columns (0-4): {first_five_columns}")
+        log_callback(f"   Fixed columns (0-{REQUIRED_COLUMNS_COUNT-1}): {first_five_columns}")
         log_callback(f"   End-of-Line Indicator: '{eol_col_name}' at index {eol_index}")
         log_callback(f"   Current total columns: {len(import_df.columns)}")
     
     # Keep first 5 columns + End-of-Line Indicator (ignore any columns after it)
     columns_to_keep = first_five_columns + [eol_col_name]
     
-    if log_callback and eol_index > 5:
-        columns_removed = list(import_df.columns[5:eol_index])
+    if log_callback and eol_index > REQUIRED_COLUMNS_COUNT:
+        columns_removed = list(import_df.columns[REQUIRED_COLUMNS_COUNT:eol_index])
         log_callback(f"   Removing {len(columns_removed)} old grade columns: {columns_removed}")
     
     import_df = import_df[columns_to_keep].copy()
     
     # Insert the new grade column at index 5 (after Email, before End-of-Line Indicator)
-    import_df.insert(5, column_name, "")
+    import_df.insert(END_OF_LINE_COLUMN_INDEX, column_name, "")
     
     if log_callback:
         log_callback(f"   Result: {len(import_df.columns)} columns")
@@ -431,7 +475,7 @@ def _update_grades(
     unreadable: Set[str],
     grades_map: Optional[Dict[str, Any]],
     log_callback: Optional[Callable[[str], None]]
-) -> list:
+) -> List[str]:
     """Update grades in the DataFrame. Returns list of fuzzy match warnings."""
     fuzzy_match_warnings = []
     
@@ -468,7 +512,7 @@ def _update_grades(
                     
                     student_name_lower = student_name.strip().lower()
                     
-                    if names_match_fuzzy(student_name_lower, full_name, threshold=0.7):
+                    if names_match_fuzzy(student_name_lower, full_name, threshold=CONFIDENCE_HIGH):
                         words1 = set(student_name_lower.split())
                         words2 = set(full_name.split())
                         similarity = len(words1 & words2) / max(len(words1), len(words2)) if words1 or words2 else 0
@@ -519,7 +563,6 @@ def _save_import_file(
             # Try to close Excel and retry
             if _close_excel_for_file(import_file_path, log_callback):
                 # Give Excel a moment to fully close
-                import time
                 time.sleep(0.5)
                 
                 # Retry save

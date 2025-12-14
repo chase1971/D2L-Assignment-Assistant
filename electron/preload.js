@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   
+  // File dialog
+  showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
+  
   // Logging
   sendLog: (message, type = 'info') => {
     console.log(`[${type.toUpperCase()}] ${message}`);

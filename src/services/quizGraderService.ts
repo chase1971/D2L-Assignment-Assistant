@@ -10,8 +10,12 @@ export interface ApiResult {
   logs?: string[];
   classes?: string[];
   zip_files?: Array<{ index: number; filename: string; path: string }>;
+  folders?: Array<{ name: string; path: string; size: string; modified: string }>;
   message?: string;
   killed?: number;  // For killProcesses response
+  assignmentName?: string;  // For split PDF upload response
+  assignment_name?: string;  // From Python backend
+  combined_pdf_path?: string;  // From Python backend
   config?: {
     developerMode?: boolean;
   };
@@ -135,20 +139,99 @@ export const extractGrades = (drive: string, selectedClass: string, addLog: LogC
     addLog
   });
 
-export const splitPdf = (drive: string, selectedClass: string, assignmentName: string | null, addLog: LogCallback): Promise<ApiResult> =>
+export const splitPdf = (drive: string, selectedClass: string, assignmentName: string | null, pdfPath: string | null, addLog: LogCallback): Promise<ApiResult> =>
   apiCall({
     endpoint: '/quiz/split-pdf',
-    body: { drive, className: selectedClass, assignmentName },
+    body: { drive, className: selectedClass, assignmentName, pdfPath },
     logMessage: '📡 Sending split PDF request to backend...',
     errorMessage: 'Failed to split PDF',
     addLog
   });
 
+export const splitPdfUpload = async (drive: string, selectedClass: string, file: File, addLog: LogCallback): Promise<ApiResult> => {
+  try {
+    if (addLog) {
+      addLog('📡 Uploading PDF to backend...');
+    }
+    
+    const formData = new FormData();
+    formData.append('pdf', file);
+    formData.append('drive', drive);
+    formData.append('className', selectedClass);
+    
+    const response = await fetch(`${API_BASE_URL}/quiz/split-pdf-upload`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { error: errorText };
+      }
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.error || errorText}`);
+    }
+
+    const result = await response.json();
+    
+    if (addLog && result.logs) {
+      result.logs.forEach((message: string) => {
+        const lines = message.split('\n');
+        lines.forEach(line => {
+          const trimmed = line.trim();
+          if (trimmed) {
+            addLog(trimmed);
+          }
+        });
+      });
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Failed to upload and split PDF:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to upload and split PDF'
+    };
+  }
+};
+
+export const getPdfsFolderPath = async (drive: string, selectedClass: string): Promise<{ targetPath: string; existingPath: string } | null> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/quiz/get-pdfs-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drive, className: selectedClass })
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to get PDFs folder path:', response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    if (data.success && data.path) {
+      return {
+        targetPath: data.path,
+        existingPath: data.existingPath || data.path
+      };
+    }
+    
+    console.error('No path in response:', data);
+    return null;
+  } catch (error) {
+    console.error('Error getting PDFs folder path:', error);
+    return null;
+  }
+};
+
 export const openFolder = (drive: string, selectedClass: string, addLog: LogCallback): Promise<ApiResult> =>
   apiCall({
     endpoint: '/quiz/open-folder',
     body: { drive, className: selectedClass },
-    logMessage: '📡 Sending open folder request to backend...',
     errorMessage: 'Failed to open folder',
     addLog
   });
@@ -162,12 +245,28 @@ export const openDownloads = (addLog: LogCallback): Promise<ApiResult> =>
     addLog
   });
 
-export const clearAllData = (drive: string, selectedClass: string, addLog: LogCallback): Promise<ApiResult> =>
+export const clearAllData = (drive: string, selectedClass: string, assignmentName: string | null, saveFoldersAndPdf: boolean, addLog: LogCallback): Promise<ApiResult> =>
   apiCall({
     endpoint: '/quiz/clear-data',
-    body: { drive, className: selectedClass },
+    body: { drive, className: selectedClass, assignmentName, saveFoldersAndPdf },
     logMessage: '📡 Sending clear request to backend...',
     errorMessage: 'Failed to clear data',
+    addLog
+  });
+
+export const listProcessingFolders = (drive: string, selectedClass: string): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/quiz/list-processing-folders',
+    body: { drive, className: selectedClass },
+    errorMessage: 'Failed to list processing folders'
+  });
+
+export const clearArchivedData = (drive: string, selectedClass: string, addLog: LogCallback): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/quiz/clear-archived-data',
+    body: { drive, className: selectedClass },
+    logMessage: '📡 Sending clear archived data request to backend...',
+    errorMessage: 'Failed to clear archived data',
     addLog
   });
 

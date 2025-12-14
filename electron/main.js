@@ -4,7 +4,7 @@
  * This file handles the Electron window and starts the backend server.
  */
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn, fork, exec } = require('child_process');
 
@@ -245,5 +245,15 @@ ipcMain.handle('maximize-window', () => {
       mainWindow.maximize();
     }
   }
+});
+
+ipcMain.handle('show-open-dialog', async (event, options) => {
+  // Normalize defaultPath for Windows - ensure it uses proper path format
+  if (options.defaultPath) {
+    options.defaultPath = path.normalize(options.defaultPath);
+  }
+  
+  const result = await dialog.showOpenDialog(mainWindow, options);
+  return result;
 });
 

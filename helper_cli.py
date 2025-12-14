@@ -125,35 +125,43 @@ def open_folder(drive_letter, class_name):
     """Open the grade processing folder for a class"""
     import subprocess
     import platform
+    import re
     
     try:
         # Get configured rosters path
         rosters_path = get_rosters_path()
         class_folder = os.path.join(rosters_path, class_name)
-        processing_folder = os.path.join(class_folder, "grade processing")
+        
+        # Check if class folder exists
+        if not os.path.exists(class_folder):
+            return {
+                "success": False,
+                "error": f"Class folder not found: {class_folder}"
+            }
+        
+        # Look for most recent "grade processing [Assignment]" folder
+        pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
+        processing_folders = []
+        
+        for folder_name in os.listdir(class_folder):
+            folder_path = os.path.join(class_folder, folder_name)
+            if os.path.isdir(folder_path):
+                match = pattern.match(folder_name)
+                if match:
+                    processing_folders.append(folder_path)
         
         # Determine which folder to open
-        if os.path.exists(processing_folder):
-            folder_to_open = processing_folder
-        elif os.path.exists(class_folder):
-            # Class folder exists but processing folder doesn't - return error
-            return {
-                "success": False,
-                "error": "No grade processing folder found"
-            }
+        if processing_folders:
+            # Sort by modification time (newest first) and open the most recent
+            processing_folders.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+            folder_to_open = processing_folders[0]
         else:
-            return {
-                "success": False,
-                "error": f"Folder not found: {class_folder}"
-            }
+            # No processing folders found - open class folder
+            folder_to_open = class_folder
         
         # Open the folder
-        if platform.system() == "Windows":
-            os.startfile(folder_to_open)
-        elif platform.system() == "Darwin":  # macOS
-            subprocess.run(["open", folder_to_open])
-        else:  # Linux
-            subprocess.run(["xdg-open", folder_to_open])
+        from file_utils import open_file_with_default_app
+        open_file_with_default_app(folder_to_open)
         
         return {
             "success": True,

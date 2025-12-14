@@ -15,7 +15,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
 from rich import box
-from grading_processor import run_reverse_process
+from grading_processor import run_reverse_process, format_error_message
 from config_reader import get_downloads_path, get_rosters_path
 
 # Initialize Rich console for clean output
@@ -239,17 +239,18 @@ def generate_index_html(student_folders, processing_folder, original_index_path=
     
     return '\n'.join(html_lines)
 
-def rezip_folders(drive, class_name, original_zip_name, log_callback):
+def rezip_folders(drive, class_name, assignment_name, original_zip_name, log_callback):
     """Rezip the processed folders back into a ZIP file"""
     try:
         # Get configured rosters path
         rosters_path = get_rosters_path()
         class_folder_path = os.path.join(rosters_path, class_name)
         
-        processing_folder = os.path.join(class_folder_path, "grade processing")
+        processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+        unzipped_folder = os.path.join(processing_folder, "unzipped folders")
         
-        if not os.path.exists(processing_folder):
-            log_callback("❌ Grade processing folder not found")
+        if not os.path.exists(unzipped_folder):
+            log_callback("❌ Unzipped folders directory not found")
             return False
         
         # Create new ZIP file in grade processing folder
@@ -257,18 +258,16 @@ def rezip_folders(drive, class_name, original_zip_name, log_callback):
         
         log_callback(f"📦 Creating new ZIP: {original_zip_name}")
         
-        # Collect all student folders (exclude PDFs and unreadable folders)
+        # Collect all student folders from unzipped folders directory
         student_folders = []
-        for item in os.listdir(processing_folder):
-            item_path = os.path.join(processing_folder, item)
-            if (os.path.isdir(item_path) and 
-                item != "PDFs" and 
-                item.lower() != "unreadable"):
+        for item in os.listdir(unzipped_folder):
+            item_path = os.path.join(unzipped_folder, item)
+            if os.path.isdir(item_path) and item.lower() != "unreadable":
                 student_folders.append(item_path)
         
-        # Try to find original index.html - use it EXACTLY as-is if it exists
-        original_index_path = os.path.join(processing_folder, 'index.html.original')
-        temp_index = os.path.join(processing_folder, 'index.html')
+        # Try to find original index.html
+        original_index_path = os.path.join(unzipped_folder, 'index.html.original')
+        temp_index = os.path.join(unzipped_folder, 'index.html')
         
         # Check if we have the original preserved
         if os.path.exists(original_index_path):
@@ -290,17 +289,17 @@ def rezip_folders(drive, class_name, original_zip_name, log_callback):
         else:
             # No original exists - generate a new one (fallback)
             log_callback("   Warning: No original index.html found, generating new one")
-            index_html_content = generate_index_html(student_folders, processing_folder, None)
+            index_html_content = generate_index_html(student_folders, unzipped_folder, None)
             index_html_path = temp_index
             with open(index_html_path, 'w', encoding='utf-8') as f:
                 f.write(index_html_content)
             log_callback("   Generated new index.html (fallback - may not work with D2L)")
         
-        # Check for any other files in the processing folder that should be included
+        # Check for any other files in the unzipped folder that should be included
         other_files = []
-        for item in os.listdir(processing_folder):
-            item_path = os.path.join(processing_folder, item)
-            # Skip folders we're already processing, PDFs folder, and the index.html we just created
+        for item in os.listdir(unzipped_folder):
+            item_path = os.path.join(unzipped_folder, item)
+            # Skip folders we're already processing and the index.html we just created
             if (os.path.isfile(item_path) and 
                 item != 'index.html' and 
                 not item.endswith('.original') and
@@ -308,9 +307,8 @@ def rezip_folders(drive, class_name, original_zip_name, log_callback):
                 other_files.append(item_path)
         
         with zipfile.ZipFile(new_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # First, add index.html to the root of the ZIP (use the actual file path)
+            # First, add index.html to the root of the ZIP
             zip_file_to_add = temp_index if os.path.exists(temp_index) else index_html_path
-            # Add index.html - use same compression as other files (DEFLATED works fine)
             zipf.write(zip_file_to_add, 'index.html')
             log_callback("   Added index.html to ZIP root")
             
@@ -327,8 +325,8 @@ def rezip_folders(drive, class_name, original_zip_name, log_callback):
                 for root, dirs, files in os.walk(folder_path):
                     for file in files:
                         file_path = os.path.join(root, file)
-                        # Calculate relative path from processing folder
-                        arcname = os.path.relpath(file_path, processing_folder)
+                        # Calculate relative path from unzipped folder
+                        arcname = os.path.relpath(file_path, unzipped_folder)
                         zipf.write(file_path, arcname)
                         # Store in formatter for clean table display (don't log individually)
                         formatter.file_additions.append(arcname)
@@ -345,8 +343,8 @@ def rezip_folders(drive, class_name, original_zip_name, log_callback):
         return False
 
 def main():
-    if len(sys.argv) < 3 or len(sys.argv) > 4:
-        error_msg = "Usage: python split_pdf_cli.py <drive> <className> [assignmentName]"
+    if len(sys.argv) < 3 or len(sys.argv) > 5:
+        error_msg = "Usage: python split_pdf_cli.py <drive> <className> [assignmentName] [pdfPath]"
         print(json.dumps({
             "success": False,
             "error": error_msg,
@@ -361,7 +359,24 @@ def main():
     
     drive = sys.argv[1]
     class_name = sys.argv[2]
-    assignment_name = sys.argv[3] if len(sys.argv) == 4 else None
+    # Handle both cases: assignment name OR PDF path, or both
+    if len(sys.argv) >= 4:
+        if len(sys.argv) == 5 and sys.argv[4] and os.path.exists(sys.argv[4]) and sys.argv[4].endswith('.pdf'):
+            # 5 args: drive, className, assignmentName, '', pdfPath
+            # 4th arg might be empty string, 5th is PDF path
+            assignment_name = sys.argv[3] if sys.argv[3] else None
+            pdf_path = sys.argv[4]
+        elif sys.argv[3] and os.path.exists(sys.argv[3]) and sys.argv[3].endswith('.pdf'):
+            # 4 args: drive, className, pdfPath (no assignment name)
+            assignment_name = None
+            pdf_path = sys.argv[3]
+        else:
+            # 4th arg is assignment name (no PDF path provided)
+            assignment_name = sys.argv[3] if sys.argv[3] else None
+            pdf_path = None
+    else:
+        assignment_name = None
+        pdf_path = None
     
     try:
         # Simplified logs - only important information
@@ -370,12 +385,13 @@ def main():
         
         # Collect errors during processing
         processing_errors = []
+        progress_messages = []
         
         def log_callback(message):
-            # Suppress all verbose logging - only collect errors
+            # Collect important messages for logging
             message_lower = message.lower()
             
-            # Only collect errors and warnings
+            # Collect errors and warnings
             if (
                 'error' in message_lower or 
                 '❌' in message or 
@@ -383,13 +399,35 @@ def main():
                 'could not find folder for' in message_lower
             ):
                 processing_errors.append(message)
-            # Suppress everything else
+                logs.append(message)  # Add errors to logs immediately
+            # Collect key progress messages
+            elif (
+                'reverse processing' in message_lower or
+                'processed' in message_lower and 'student' in message_lower or
+                'split' in message_lower or
+                'extracted' in message_lower or
+                'combined pdf' in message_lower
+            ):
+                progress_messages.append(message)
+                logs.append(message)  # Add progress to logs
+            # Also collect completion messages
+            elif 'complete' in message_lower or '✅' in message:
+                logs.append(message)
         
-        # Run the reverse process (suppresses verbose logging)
-        result = run_reverse_process(drive, class_name, log_callback)
+        # Run the reverse process
+        logs.append("")
+        logs.append("Splitting combined PDF into individual student PDFs...")
+        result = run_reverse_process(drive, class_name, log_callback, pdf_path)
         
         students_count = len(result.submitted) if hasattr(result, 'submitted') else 0
-        logs.append(f"✅ Successfully split PDF for {students_count} students")
+        if students_count > 0:
+            logs.append(f"✅ Successfully split PDF for {students_count} students")
+        else:
+            logs.append("⚠️ No students processed - check if combined PDF exists")
+        
+        # Get assignment name from result if available, or from CLI args
+        if not assignment_name and hasattr(result, 'assignment_name'):
+            assignment_name = result.assignment_name
         
         # Get ZIP name from assignment name (preferred) or fallback to finding most recent
         original_zip_name = None
@@ -410,15 +448,30 @@ def main():
                     original_zip_name = latest_zip[1]
         
         rezip_success = False
-        if original_zip_name:
-            rezip_success = rezip_folders(drive, class_name, original_zip_name, lambda msg: None)  # Suppress rezip logs
+        if original_zip_name and assignment_name:
+            logs.append("")
+            logs.append(f"Creating ZIP file: {original_zip_name}...")
+            
+            def rezip_log_callback(msg):
+                # Collect rezip progress messages
+                if 'error' in msg.lower() or '❌' in msg or 'failed' in msg.lower():
+                    processing_errors.append(msg)
+                    logs.append(msg)
+                elif 'created zip' in msg.lower() or '✅' in msg or 'added' in msg.lower():
+                    logs.append(msg)
+            
+            rezip_success = rezip_folders(drive, class_name, assignment_name, original_zip_name, rezip_log_callback)
             
             if rezip_success:
                 logs.append(f"✅ Created ZIP file: {original_zip_name}")
             else:
-                processing_errors.append("⚠️ ZIP creation failed, but PDFs were split")
+                error_msg = "⚠️ ZIP creation failed, but PDFs were split"
+                processing_errors.append(error_msg)
+                logs.append(error_msg)
         else:
-            processing_errors.append("⚠️ Could not determine ZIP name, skipping rezip")
+            error_msg = "⚠️ Could not determine assignment name or ZIP name, skipping rezip"
+            processing_errors.append(error_msg)
+            logs.append(error_msg)
         
         # Build simplified output
         if processing_errors:
@@ -442,25 +495,16 @@ def main():
         print(json.dumps(response))
         
     except Exception as e:
-        error_msg = str(e)
-        
-        # Determine friendly error message
-        if "combined pdf not found" in error_msg.lower() or "could not find" in error_msg.lower() and "pdf" in error_msg.lower():
-            friendly_error = "Could not process. There's no PDF to split."
-        elif error_msg and error_msg.strip() and not error_msg.lower().startswith("usage"):
-            # There's a specific error message - use it
-            friendly_error = error_msg
-        else:
-            # Unknown error
-            friendly_error = "Something ran into a problem with the split and zip."
+        # Use standardized error formatting
+        friendly_error = format_error_message(e)
         
         # Build simplified error output
         error_logs = []
-        error_logs.append("❌ Split PDF failed")
+        error_logs.append(f"❌ {friendly_error}")
         
         error_response = {
             "success": False,
-            "error": "Split PDF failed",
+            "error": friendly_error,
             "logs": error_logs
         }
         print(json.dumps(error_response))

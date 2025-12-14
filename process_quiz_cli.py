@@ -8,6 +8,7 @@ import sys
 import os
 import json
 from config_reader import get_downloads_path
+from grading_processor import format_error_message
 
 # Rich imports for beautiful terminal output
 from rich.console import Console
@@ -53,42 +54,17 @@ def main():
         logs.append("=" * 60)
         logs.append("")
         
-        # Check for multiple ZIPs FIRST before any console output
-        # This ensures clean JSON response for ZIP selection
-        if not specific_zip:
-            import glob
-            downloads_path = get_downloads_path()
-            zip_files = glob.glob(os.path.join(downloads_path, "*.zip"))
-            
-            if not zip_files:
-                # No ZIP files - return JSON error
-                response = {
-                    "success": False,
-                    "error": "No ZIP files found in Downloads folder",
-                    "logs": logs + ["No quiz files found in Downloads folder"]
-                }
-                print(json.dumps(response))
-                return
-            
-            # If multiple ZIP files, return for user selection (clean JSON only, no Rich output)
-            if len(zip_files) > 1:
-                # Don't add ZIP file list to logs - just return JSON for modal
-                # Return list of ZIP files for frontend to handle
-                response = {
-                    "success": False,
-                    "error": "Multiple ZIP files found",
-                    "message": "Please select which ZIP file to process",
-                    "zip_files": [{"index": i+1, "filename": os.path.basename(zip_file), "path": zip_file} for i, zip_file in enumerate(zip_files)],
-                    "logs": logs  # Only include logs up to this point (no file list)
-                }
-                # Output ONLY JSON to stdout (no Rich formatting that would corrupt JSON parsing)
-                print(json.dumps(response, ensure_ascii=False))
-                return
-            
-            # Only one ZIP file - continue with processing
-            selected_zip = zip_files[0]
-        else:
-            selected_zip = specific_zip
+        # Check for ZIP files using shared function
+        from grading_processor import find_zip_file
+        downloads_path = get_downloads_path()
+        selected_zip, error_response = find_zip_file(downloads_path, specific_zip, logs)
+        
+        if error_response:
+            # No ZIP files or multiple ZIP files - return JSON response
+            print(json.dumps(error_response, ensure_ascii=False))
+            return
+        
+        # selected_zip is guaranteed to be set here
         
         # Now we can use Rich console output since we're not returning early with JSON
         console.print()
@@ -176,23 +152,17 @@ def main():
         response = {
             "success": True,
             "message": "Quiz processing completed",
-            "logs": logs
+            "logs": logs,
+            "combined_pdf_path": result.combined_pdf_path if result and hasattr(result, 'combined_pdf_path') else None,
+            "assignment_name": result.assignment_name if result and hasattr(result, 'assignment_name') else None
         }
         
         # Only print JSON to stderr so it doesn't interfere with clean output
         print(json.dumps(response), file=sys.stderr)
         
     except Exception as e:
-        # Check for specific error types and show friendly messages
-        error_msg = str(e)
-        if "does not contain student assignments" in error_msg:
-            friendly_error = "Zip file does not contain student assignments"
-        elif "can't be opened" in error_msg or "This file can't be opened" in error_msg:
-            friendly_error = "This file can't be opened"
-        elif "wrong file" in error_msg.lower() or "wrong class" in error_msg.lower() or "Oops" in error_msg:
-            friendly_error = "Zip file does not contain student assignments"
-        else:
-            friendly_error = error_msg
+        # Use standardized error formatting
+        friendly_error = format_error_message(e)
         logs.append("")
         logs.append(friendly_error)
         
@@ -204,6 +174,20 @@ def main():
             box=box.DOUBLE
         ))
         console.print()
+        
+        # Print all logs to stdout so user can see full context
+        print("=" * 60)
+        print("QUIZ PROCESSING FAILED - FULL LOG")
+        print("=" * 60)
+        print()
+        
+        for log in logs:
+            print(log)
+        
+        print()
+        print("=" * 60)
+        print("PROCESSING FAILED")
+        print("=" * 60)
         
         # Return JSON for the backend
         error_response = {

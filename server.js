@@ -12,6 +12,7 @@ const { spawn, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const multer = require('multer');
 
 const app = express();
 const DEFAULT_PORT = 5000;
@@ -20,9 +21,26 @@ let PORT = DEFAULT_PORT;
 // Constants
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB buffer for Python script output
 
+// Configure multer for file uploads
+const upload = multer({
+  dest: os.tmpdir(), // Store in system temp directory
+  limits: {
+    fileSize: 1000 * 1024 * 1024 // 1GB max file size (for very large combined PDFs)
+  },
+  fileFilter: (req, file, cb) => {
+    // Only accept PDF files
+    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'));
+    }
+  }
+});
+
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '500mb' })); // Increase JSON body size limit
+app.use(express.urlencoded({ extended: true, limit: '500mb' })); // Increase URL-encoded body size limit
 
 // Logging
 function writeLog(message, isError = false) {
@@ -125,10 +143,13 @@ function validateDrive(drive) {
 
 // Get possible rosters paths (mirrors Python config_reader.py logic)
 function getPossibleRostersPaths(drive) {
+  const username = os.userInfo().username;
+  // Use proper Windows path format with backslashes
   return [
-    path.join(os.homedir(), 'My Drive', 'Rosters etc'),  // Google Drive path
-    path.join(drive + ':', 'Rosters etc'),  // Direct drive path
-    path.join(drive + ':', 'Users', os.userInfo().username, 'My Drive', 'Rosters etc'),  // Full path
+    `${drive}:\\Users\\${username}\\My Drive\\Rosters etc`,  // Standard path: C:\Users\chase\My Drive\Rosters etc
+    `${drive}:\\${username}\\My Drive\\Rosters etc`,  // Alternative: C:\chase\My Drive\Rosters etc
+    `${drive}:\\My Drive\\Rosters etc`,  // Direct: C:\My Drive\Rosters etc
+    path.join(os.homedir(), 'My Drive', 'Rosters etc'),  // From home directory
   ];
 }
 
@@ -137,7 +158,11 @@ function findClassFolder(drive, className) {
   const possiblePaths = getPossibleRostersPaths(drive);
   
   for (const rostersPath of possiblePaths) {
-    const classFolder = path.join(rostersPath, className);
+    // Use path.join for cross-platform compatibility, but handle Windows drive paths
+    const classFolder = rostersPath.includes(':\\') 
+      ? `${rostersPath}\\${className}`  // Windows absolute path
+      : path.join(rostersPath, className);  // Relative or home directory path
+      
     if (fs.existsSync(classFolder)) {
       return { rostersPath, classFolder };
     }
@@ -150,16 +175,19 @@ function findPdfsFolder(drive, className) {
   const result = findClassFolder(drive, className);
   if (!result) return null;
   
-  const pdfsFolder = path.join(result.classFolder, 'grade processing', 'PDFs');
-  if (fs.existsSync(pdfsFolder)) {
-    return {
-      ...result,
-      pdfsFolder,
-      processingFolder: path.join(result.classFolder, 'grade processing'),
-      importFilePath: path.join(result.classFolder, 'Import File.csv')
-    };
-  }
-  return null;
+  // Use proper path joining for Windows
+  const separator = result.classFolder.includes(':\\') ? '\\' : path.sep;
+  const pdfsFolder = `${result.classFolder}${separator}grade processing${separator}PDFs`;
+  const processingFolder = `${result.classFolder}${separator}grade processing`;
+  const importFilePath = `${result.classFolder}${separator}Import File.csv`;
+  
+  // Return the path even if folder doesn't exist yet (for file dialogs)
+  return {
+    ...result,
+    pdfsFolder,
+    processingFolder,
+    importFilePath
+  };
 }
 
 // Parse ZIP files from Python script output
@@ -253,11 +281,28 @@ async function runPythonScript(scriptName, args = []) {
     });
 
     proc.on('close', (code) => {
+      // Try to parse JSON from stderr (our Python scripts output JSON there)
+      let jsonData = null;
+      try {
+        // Look for JSON in stderr
+        const lines = stderr.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            jsonData = JSON.parse(trimmed);
+            break;
+          }
+        }
+      } catch (e) {
+        // If JSON parsing fails, that's okay - we'll just use stdout
+      }
+      
       resolve({
         success: code === 0,
         output: stdout,
         error: stderr,
-        code
+        code,
+        data: jsonData  // Include parsed JSON data if available
       });
     });
 
@@ -332,6 +377,8 @@ app.post('/api/quiz/process', async (req, res) => {
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
+      combined_pdf_path: result.data?.combined_pdf_path,
+      assignment_name: result.data?.assignment_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
@@ -352,6 +399,8 @@ app.post('/api/quiz/process-selected', async (req, res) => {
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
+      combined_pdf_path: result.data?.combined_pdf_path,
+      assignment_name: result.data?.assignment_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
@@ -409,6 +458,8 @@ app.post('/api/quiz/process-completion-selected', async (req, res) => {
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
+      combined_pdf_path: result.data?.combined_pdf_path,
+      assignment_name: result.data?.assignment_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
@@ -473,18 +524,106 @@ app.post('/api/quiz/extract-grades', async (req, res) => {
   }
 });
 
-app.post('/api/quiz/split-pdf', async (req, res) => {
+// Handle file upload for split PDF with error handling middleware
+app.post('/api/quiz/split-pdf-upload', (req, res, next) => {
+  upload.single('pdf')(req, res, (err) => {
+    if (err) {
+      // Handle multer errors
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return apiResponse(res, { 
+          success: false, 
+          error: `File too large. Maximum size is 1GB. Your file appears to exceed this limit.` 
+        });
+      }
+      return apiResponse(res, { 
+        success: false, 
+        error: `File upload error: ${err.message}` 
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
+    
     const { drive, className, assignmentName } = req.body;
     
     if (!validateClassName(className)) {
       return apiResponse(res, { success: false, error: 'Invalid class name' });
     }
     
+    if (!req.file) {
+      return apiResponse(res, { success: false, error: 'No PDF file uploaded' });
+    }
+    
+    const uploadedFilePath = req.file.path;
+    const originalName = req.file.originalname || 'uploaded.pdf';
+    
+    // Extract assignment name from filename if not provided
+    let finalAssignmentName = assignmentName;
+    if (!finalAssignmentName) {
+      finalAssignmentName = originalName.replace(/\.pdf$/i, '').trim();
+    }
+    
+    // Call split_pdf_cli.py with the uploaded file path AND assignment name
+    // Format: python split_pdf_cli.py <drive> <className> <assignmentName> '' <pdfPath>
+    // (5 args: drive, className, assignmentName, empty string, pdfPath)
+    const args = [drive || 'C', className, finalAssignmentName, '', uploadedFilePath];
+    const result = await runPythonScript('split_pdf_cli.py', args);
+    
+    // Clean up uploaded file after processing
+    try {
+      fs.unlinkSync(uploadedFilePath);
+    } catch (cleanupError) {
+      // Ignore cleanup errors
+    }
+    
+    apiResponse(res, {
+      success: result.success,
+      logs: result.output.split('\n').filter(l => l.trim()),
+      assignmentName: finalAssignmentName,
+      ...(result.success ? {} : { error: result.error || 'Split failed' })
+    });
+  } catch (error) {
+    // Clean up uploaded file on error
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+      }
+    }
+    
+    // Handle multer-specific errors
+    let errorMessage = error.message;
+    if (error.name === 'MulterError') {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        errorMessage = `File too large. Maximum size is 1GB. Your file appears to be larger than this limit.`;
+      } else {
+        errorMessage = `File upload error: ${error.message}`;
+      }
+    }
+    
+    apiResponse(res, { success: false, error: errorMessage });
+  }
+});
+
+app.post('/api/quiz/split-pdf', async (req, res) => {
+  try {
+    const { drive, className, assignmentName, pdfPath } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
     const args = [drive || 'C', className];
-    if (assignmentName) {
+    if (pdfPath) {
+      // If PDF path is provided, use it directly (skip assignment name)
+      args.push(''); // Empty assignment name
+      args.push(pdfPath); // PDF path as 4th argument
+    } else if (assignmentName) {
       args.push(assignmentName);
     }
+    
     const result = await runPythonScript('split_pdf_cli.py', args);
     
     apiResponse(res, {
@@ -492,6 +631,72 @@ app.post('/api/quiz/split-pdf', async (req, res) => {
       logs: result.output.split('\n').filter(l => l.trim()),
       ...(result.success ? {} : { error: result.error || 'Split failed' })
     });
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+app.post('/api/quiz/get-pdfs-folder', async (req, res) => {
+  try {
+    const { drive, className } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
+    const pdfsFolderResult = findPdfsFolder(drive || 'C', className);
+    if (pdfsFolderResult) {
+      // Return the PDFs folder path and find an existing parent for the file dialog
+      const pdfsFolder = pdfsFolderResult.pdfsFolder;
+      const processingFolder = pdfsFolderResult.processingFolder;
+      const classFolder = pdfsFolderResult.classFolder;
+      
+      // Find the first existing directory to use as defaultPath
+      // Electron file dialogs ignore defaultPath if the directory doesn't exist
+      let existingPath = pdfsFolder;
+      if (!fs.existsSync(pdfsFolder)) {
+        if (fs.existsSync(processingFolder)) {
+          existingPath = processingFolder;
+        } else if (fs.existsSync(classFolder)) {
+          existingPath = classFolder;
+        } else {
+          // Use the rosters path as fallback
+          existingPath = pdfsFolderResult.rostersPath;
+        }
+      }
+      
+      apiResponse(res, { 
+        success: true, 
+        path: pdfsFolder,  // Target path for logging
+        existingPath: existingPath  // Existing parent for file dialog
+      });
+    } else {
+      // Try to construct path even if class folder not found
+      const possiblePaths = getPossibleRostersPaths(drive || 'C');
+      if (possiblePaths.length > 0) {
+        // Find the first existing rosters path
+        let existingRostersPath = possiblePaths[0];
+        for (const rostersPath of possiblePaths) {
+          if (fs.existsSync(rostersPath)) {
+            existingRostersPath = rostersPath;
+            break;
+          }
+        }
+        
+        // Construct the target path
+        const rostersPath = possiblePaths[0];
+        const separator = rostersPath.includes(':\\') ? '\\' : path.sep;
+        const constructedPath = `${rostersPath}${separator}${className}${separator}grade processing${separator}PDFs`;
+        
+        apiResponse(res, { 
+          success: true, 
+          path: constructedPath,
+          existingPath: existingRostersPath  // Use existing rosters path
+        });
+      } else {
+        apiResponse(res, { success: false, error: 'Could not determine rosters path' });
+      }
+    }
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
   }
@@ -546,18 +751,79 @@ app.post('/api/quiz/open-folder', async (req, res) => {
 
 app.post('/api/quiz/clear-data', async (req, res) => {
   try {
+    const { drive, className, assignmentName, saveFoldersAndPdf } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
+    if (!assignmentName) {
+      return apiResponse(res, { success: false, error: 'Assignment name required' });
+    }
+    
+    const args = [drive || 'C', className, assignmentName];
+    if (saveFoldersAndPdf) {
+      args.push('--save-folders-and-pdf');
+    }
+    
+    const result = await runPythonScript('clear_data_cli.py', args);
+    
+    apiResponse(res, {
+      success: result.success,
+      logs: result.output.split('\n').filter(l => l.trim()),
+      ...(result.success ? {} : { error: result.error || 'Clear failed' })
+    });
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// List processing folders for a class
+app.post('/api/quiz/list-processing-folders', async (req, res) => {
+  try {
     const { drive, className } = req.body;
     
     if (!validateClassName(className)) {
       return apiResponse(res, { success: false, error: 'Invalid class name' });
     }
     
-    const result = await runPythonScript('cleanup_data_cli.py', [drive || 'C', className]);
+    const result = await runPythonScript('clear_data_cli.py', [drive || 'C', className, '--list']);
+    
+    if (result.success) {
+      // Parse JSON output from Python script
+      try {
+        const jsonOutput = JSON.parse(result.output);
+        apiResponse(res, {
+          success: jsonOutput.success,
+          folders: jsonOutput.folders || [],
+          ...(jsonOutput.error ? { error: jsonOutput.error } : {})
+        });
+      } catch (parseError) {
+        apiResponse(res, { success: false, error: 'Failed to parse folder list' });
+      }
+    } else {
+      apiResponse(res, { success: false, error: result.error || 'Failed to list folders' });
+    }
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Clear all archived data for a class
+app.post('/api/quiz/clear-archived-data', async (req, res) => {
+  try {
+    const { drive, className } = req.body;
+    
+    if (!validateClassName(className)) {
+      return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
+    const result = await runPythonScript('clear_data_cli.py', [drive || 'C', className, '--clear-archived']);
     
     apiResponse(res, {
       success: result.success,
       logs: result.output.split('\n').filter(l => l.trim()),
-      ...(result.success ? {} : { error: result.error || 'Clear failed' })
+      ...(result.success ? {} : { error: result.error || 'Clear archived failed' })
     });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
