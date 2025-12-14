@@ -1,0 +1,344 @@
+﻿binding.d.ts:35: export declare function print(programJson: string, options: Buffer, signal?: AbortSignal | undefined | null): Promise<TransformOutput>
+index.d.ts:42: print(m: Program, options?: Options): Promise<Output>;
+index.d.ts:76: export declare function print(m: Program, options?: Options): Promise<Output>;
+vm.d.ts:713: *   print(s);
+store.py:460: print('next: %u\ncount: %u\n' % (next_node, count))
+store.py:464: print('%8u ' % ptr, end=' ')
+store.py:466: print('         ', end=' ')
+store.py:468: print(e, ' (%u)' % e.byte_length())
+store.py:469: print('used: %u' % block.tell())
+store.py:473: print('root: %u\nlevels: %u\nrecords: %u\nnodes: %u\npage-size: %u' \
+bookmark.py:317: print('Unknown data type %08x' % typecode)
+electron.d.ts:13946: print(options?: WebContentsPrintOptions, callback?: (success: boolean, failureReason: string) => void): void;
+electron.d.ts:15470: * Prints `webview`'s web page. Same as `webContents.print([options])`.
+electron.d.ts:15472: print(options?: WebviewTagPrintOptions): Promise<void>;
+print.py:3: print(sys.argv[1])
+lib.dom.d.ts:36736: print(): void;
+lib.dom.d.ts:38772: declare function print(): void;
+LogTerminal.tsx:138: addLog(`✅ Killed ${result.killed || 0} processes`);
+LogTerminal.tsx:140: addLog(`❌ Error: ${result.error}`);
+LogTerminal.tsx:147: addLog(`✅ Opened PDF for ${studentName}`);
+LogTerminal.tsx:149: addLog(`❌ ${result.error}`);
+LogTerminal.tsx:156: addLog('✅ Combined PDF opened');
+LogTerminal.tsx:158: addLog(`❌ ${result.error}`);
+LogTerminal.tsx:165: addLog('✅ Import file opened');
+LogTerminal.tsx:167: addLog(`❌ ${result.error}`);
+Option2.tsx:95: addLog(`✅ Class loaded: ${newClass}`);
+Option2.tsx:101: addLog('📂 Loading classes from Rosters etc folder...');
+Option2.tsx:105: addLog(`✅ Found ${result.classes.length} classes`);
+Option2.tsx:107: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:110: addLog(`❌ Error loading classes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:116: addLog('📁 Opening Downloads folder...');
+Option2.tsx:120: addLog('✅ Downloads folder opened successfully!');
+Option2.tsx:122: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:125: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:132: addLog('❌ Please select a class first');
+Option2.tsx:137: addLog('🔍 Searching for Canvas ZIP in Downloads...');
+Option2.tsx:143: addLog('✅ Quiz processing completed!');
+Option2.tsx:144: addLog('📂 Combined PDF ready for manual grading');
+Option2.tsx:149: addLog('📁 Multiple ZIP files found - please select one');
+Option2.tsx:152: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:155: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:166: addLog(`📁 Processing selected ZIP file: ${zipFilename}`);
+Option2.tsx:172: addLog('✅ Quiz processing completed!');
+Option2.tsx:181: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:184: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:193: addLog('❌ Please select a class first');
+Option2.tsx:198: addLog('🔍 Searching for Canvas ZIP in Downloads...');
+Option2.tsx:204: addLog('✅ Completion processing completed!');
+Option2.tsx:205: addLog('✅ Auto-assigned 10 points to all submissions');
+Option2.tsx:210: addLog('📁 Multiple ZIP files found - please select one');
+Option2.tsx:213: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:216: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:243: addLog(`📁 Processing selected ZIP file: ${zipFilename}`);
+Option2.tsx:249: addLog('✅ Completion processing completed!');
+Option2.tsx:250: addLog('✅ Auto-assigned 10 points to all submissions');
+Option2.tsx:259: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:262: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:271: addLog('❌ Please select a class first');
+Option2.tsx:276: addLog('🔬 Starting grade extraction...');
+Option2.tsx:282: addLog('✅ Grade extraction completed successfully!');
+Option2.tsx:284: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:287: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:296: addLog('❌ Please select a class first');
+Option2.tsx:301: addLog('📦 Starting PDF split and rezip...');
+Option2.tsx:312: addLog('✅ Split PDF and rezip completed!');
+Option2.tsx:314: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:317: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:326: addLog('❌ Please select a class first');
+Option2.tsx:330: addLog('📂 Opening grade processing folder...');
+Option2.tsx:337: addLog('📁 Class folder opened (no grade processing folder found)');
+Option2.tsx:339: addLog('✅ Grade processing folder opened!');
+Option2.tsx:342: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:345: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+Option2.tsx:352: addLog('❌ Please select a class first');
+Option2.tsx:361: addLog('🗑️ Clearing all processing data...');
+Option2.tsx:367: addLog('✅ All data cleared successfully!');
+Option2.tsx:373: addLog(`❌ Error: ${result.error}`);
+Option2.tsx:376: addLog(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+quizGraderService.ts:37: addLog(logMessage);
+quizGraderService.ts:60: result.logs.forEach((message: string) => addLog(message));
+backup_utils.py:27: log_callback("")
+backup_utils.py:28: log_callback("Existing folder found, creating backup...")
+backup_utils.py:29: log_callback(f"   Renaming: {os.path.basename(folder_path)}")
+backup_utils.py:30: log_callback(f"         to: {os.path.basename(backup_name)}")
+backup_utils.py:35: log_callback(f"   Backup created successfully")
+backup_utils.py:36: log_callback("")
+backup_utils.py:40: log_callback(f"   Could not create backup: {e}")
+backup_utils.py:41: log_callback("")
+cleanup_data_cli.py:54: print(json.dumps({
+cleanup_data_cli.py:108: print(log)
+cleanup_data_cli.py:111: print(f"SUCCESS: Cleanup completed - {deleted_zips} ZIP files and {deleted_folders} folders removed")
+cleanup_data_cli.py:114: print(f"🗑️ Starting cleanup for {class_name} on {drive}: drive")
+cleanup_data_cli.py:115: print(f"❌ Error: {str(e)}")
+cleanup_data_cli.py:116: print(f"ERROR: {str(e)}")
+config_reader.py:48: print(f"Warning: Could not load config file: {e}", file=sys.stderr)
+extract_grades_cli.py:25: print(json.dumps({
+extract_grades_cli.py:77: def log_callback(message):
+extract_grades_cli.py:362: print("🔬 Starting grade extraction...")
+extract_grades_cli.py:363: print("")
+extract_grades_cli.py:367: print("📋 EXTRACTED GRADES:")
+extract_grades_cli.py:371: print(f"   {i:2d}. {sg['name']}: {sg['grade']} {conf_indicator} (confidence: {conf:.2f})")
+extract_grades_cli.py:374: print("📋 EXTRACTED GRADES:")
+extract_grades_cli.py:383: print(f"   {i:2d}. {name}: {grade} {conf_indicator} (confidence: {conf:.2f})")
+extract_grades_cli.py:385: print("")
+extract_grades_cli.py:386: print(f"📊 Processed {len(grades_result) if grades_result else 0} students")
+extract_grades_cli.py:428: print("")
+extract_grades_cli.py:429: print("✅ Grade extraction complete!")
+extract_grades_cli.py:433: print("")
+extract_grades_cli.py:434: print("⚠️ ISSUES FOUND (Please Review):")
+extract_grades_cli.py:439: print(f"   ❌ {clean_msg}")
+extract_grades_cli.py:441: print(f"   ⚠️ {clean_msg}")
+extract_grades_cli.py:460: print("")
+extract_grades_cli.py:461: print(friendly_error)
+extract_grades_cli.py:462: print("")
+extract_grades_simple.py:72: def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=None):
+grading_processor.py:26: print(f"WARNING: Failed to load extract_grades_simple module: {e}")
+grading_processor.py:76: log_callback("Looking for quiz files in Downloads...")
+grading_processor.py:82: log_callback("No quiz files found in Downloads")
+grading_processor.py:95: log_callback("")
+grading_processor.py:96: log_callback(f"Found quiz file: {os.path.basename(chosen_zip)}")
+grading_processor.py:97: log_callback(f"Assignment: {assignment_name}")
+grading_processor.py:98: log_callback("")
+grading_processor.py:106: log_callback(f"Extracting to: {extraction_folder}")
+grading_processor.py:121: log_callback("   Preserved original index.html")
+grading_processor.py:131: log_callback("")
+grading_processor.py:132: log_callback(f"Extracted {folder_count} student folders")
+grading_processor.py:134: log_callback(f"   Preserved index.html from original ZIP")
+grading_processor.py:135: log_callback("")
+grading_processor.py:157: log_callback(f"Drive: {drive_letter}:")
+grading_processor.py:158: log_callback(f"Class: {class_folder_name}")
+grading_processor.py:159: log_callback(f"Processing folder: {processing_folder}")
+grading_processor.py:160: log_callback("-" * 60)
+grading_processor.py:171: log_callback(f"Assignment: {assignment_name}")
+grading_processor.py:195: log_callback(f"   PDF saved as: {os.path.basename(combined_pdf_path)}")
+grading_processor.py:207: log_callback("")
+grading_processor.py:208: log_callback("=" * 60)
+grading_processor.py:209: log_callback("COMBINED PDF CREATED!")
+grading_processor.py:210: log_callback("Ready for grading or splitting back to individual PDFs")
+grading_processor.py:211: log_callback("=" * 60)
+grading_processor.py:212: log_callback("")
+grading_processor.py:218: log_callback("")
+grading_processor.py:219: log_callback(f"ERROR: {str(e)}")
+grading_processor.py:244: log_callback(f"Drive: {drive_letter}:")
+grading_processor.py:245: log_callback(f"Class: {class_folder_name}")
+grading_processor.py:246: log_callback(f"Processing folder: {processing_folder}")
+grading_processor.py:247: log_callback("-" * 60)
+grading_processor.py:254: log_callback(f"Found combined PDF: {os.path.basename(combined_pdf_path)}")
+grading_processor.py:270: log_callback("")
+grading_processor.py:271: log_callback("=" * 60)
+grading_processor.py:272: log_callback("REVERSE PROCESSING COMPLETE!")
+grading_processor.py:273: log_callback(f"Processed {students_processed} students")
+grading_processor.py:274: log_callback("=" * 60)
+grading_processor.py:275: log_callback("")
+grading_processor.py:281: log_callback("")
+grading_processor.py:282: log_callback(f"ERROR: {str(e)}")
+grading_processor.py:301: log_callback(f"Drive: {drive_letter}:")
+grading_processor.py:302: log_callback(f"Class: {class_folder_name}")
+grading_processor.py:303: log_callback(f"Processing folder: {processing_folder}")
+grading_processor.py:304: log_callback("-" * 60)
+grading_processor.py:315: log_callback(f"Assignment: {assignment_name}")
+grading_processor.py:342: log_callback(f"   PDF saved as: {os.path.basename(combined_pdf_path)}")
+grading_processor.py:347: log_callback("")
+grading_processor.py:348: log_callback("Setting up Import File column...")
+grading_processor.py:363: log_callback(f"   Created column: '{column_name}'")
+grading_processor.py:367: log_callback(f"   Added column: '{column_name}'")
+grading_processor.py:378: log_callback(f"   ❌ {friendly_msg}")
+grading_processor.py:385: log_callback(f"   ❌ {friendly_msg}")
+grading_processor.py:390: log_callback(f"   Import File ready for grade extraction")
+grading_processor.py:393: log_callback(f"   Column already exists: '{column_name}'")
+grading_processor.py:396: log_callback(f"   Could not setup Import File: {e}")
+grading_processor.py:401: log_callback("")
+grading_processor.py:402: log_callback("Opening combined PDF for manual grading...")
+grading_processor.py:411: log_callback(f"   Could not open PDF: {e}")
+grading_processor.py:423: log_callback("")
+grading_processor.py:424: log_callback("=" * 60)
+grading_processor.py:425: log_callback("PROCESSING COMPLETE!")
+grading_processor.py:426: log_callback("=" * 60)
+grading_processor.py:427: log_callback("")
+grading_processor.py:433: log_callback("")
+grading_processor.py:434: log_callback(f"ERROR: {str(e)}")
+grading_processor.py:459: log_callback(f"Drive: {drive_letter}:")
+grading_processor.py:460: log_callback(f"Class: {class_folder_name}")
+grading_processor.py:461: log_callback(f"Processing folder: {processing_folder}")
+grading_processor.py:462: log_callback("-" * 60)
+grading_processor.py:473: log_callback(f"Assignment: {assignment_name}")
+grading_processor.py:500: log_callback(f"   PDF saved as: {os.path.basename(combined_pdf_path)}")
+grading_processor.py:526: log_callback("")
+grading_processor.py:527: log_callback("=" * 60)
+grading_processor.py:528: log_callback("COMPLETION PROCESSING COMPLETE!")
+grading_processor.py:529: log_callback(f"✅ Auto-assigned 10 points to {len(submitted)} submissions")
+grading_processor.py:530: log_callback("=" * 60)
+grading_processor.py:534: log_callback("")
+grading_processor.py:535: log_callback("❌ STUDENT ERRORS AND WARNINGS:")
+grading_processor.py:537: log_callback(f"❌ {error}")
+grading_processor.py:539: log_callback("")
+grading_processor.py:545: log_callback("")
+grading_processor.py:546: log_callback(f"ERROR: {str(e)}")
+helper_cli.py:168: print(json.dumps({
+helper_cli.py:223: print(json.dumps(result, indent=2))
+import_file_handler.py:32: log_callback("   📋 Closed Excel to save import file")
+import_file_handler.py:102: log_callback("   ⚠️  End-of-Line Indicator not found - adding it to column F")
+import_file_handler.py:112: log_callback("   ✅ Added End-of-Line Indicator column")
+import_file_handler.py:135: log_callback(f"Import File not found: {import_file_path}")
+import_file_handler.py:144: log_callback("")
+import_file_handler.py:145: log_callback(f"Loaded Import File: {len(df)} students")
+import_file_handler.py:146: log_callback("")
+import_file_handler.py:181: log_callback("")
+import_file_handler.py:182: log_callback("-" * 40)
+import_file_handler.py:183: log_callback("UPDATING IMPORT FILE")
+import_file_handler.py:184: log_callback("-" * 40)
+import_file_handler.py:185: log_callback(f"Current columns: {list(import_df.columns)}")
+import_file_handler.py:186: log_callback("")
+import_file_handler.py:195: log_callback(f"   New column name: '{column_name}'")
+import_file_handler.py:205: log_callback(f"   Updating grades...")
+import_file_handler.py:213: log_callback(f"   Saving to: {import_file_path}")
+import_file_handler.py:219: log_callback("")
+import_file_handler.py:221: log_callback("   ⚠️  Fuzzy name matches (please verify):")
+import_file_handler.py:223: log_callback(warning)
+import_file_handler.py:224: log_callback("")
+import_file_handler.py:225: log_callback(f"Updated grades for {len(import_df)} students")
+import_file_handler.py:226: log_callback("")
+import_file_handler.py:234: log_callback(f"Error updating import file: {error_msg}")
+import_file_handler.py:262: log_callback(f"   🧹 Cleaning up {len(columns_to_remove)} corrupted columns after End-of-Line Indicator")
+import_file_handler.py:277: log_callback(f"   Mode: Don't override - adding new column before End-of-Line Indicator")
+import_file_handler.py:282: log_callback(f"   Warning: Less than 5 columns, adding empty columns")
+import_file_handler.py:290: log_callback(f"   Column '{column_name}' already exists, using existing column")
+import_file_handler.py:299: log_callback(f"   Added new column '{column_name}' at index {eol_index} (before '{eol_col_name}')")
+import_file_handler.py:309: log_callback(f"   Mode: Override - removing old grade columns")
+import_file_handler.py:319: log_callback(f"   Fixed columns (0-4): {first_five_columns}")
+import_file_handler.py:320: log_callback(f"   End-of-Line Indicator: '{eol_col_name}' at index {eol_index}")
+import_file_handler.py:321: log_callback(f"   Current total columns: {len(import_df.columns)}")
+import_file_handler.py:328: log_callback(f"   Removing {len(columns_removed)} old grade columns: {columns_removed}")
+import_file_handler.py:336: log_callback(f"   Result: {len(import_df.columns)} columns")
+import_file_handler.py:337: log_callback(f"   Added grade column '{column_name}' at index 5")
+import_file_handler.py:450: log_callback(f"")
+import_file_handler.py:451: log_callback(f"❌ {friendly_msg}")
+pdf_operations.py:67: log_callback("")
+pdf_operations.py:68: log_callback("-" * 40)
+pdf_operations.py:69: log_callback("NORMALIZING AND COMBINING PDFs")
+pdf_operations.py:70: log_callback("-" * 40)
+pdf_operations.py:97: log_callback(f"   Error processing {name}: {e}")
+pdf_operations.py:105: log_callback("")
+pdf_operations.py:106: log_callback(f"Created combined PDF: {len(pdf_paths)} submissions (sorted by last name)")
+pdf_operations.py:107: log_callback("")
+pdf_operations.py:156: log_callback("")
+pdf_operations.py:157: log_callback("-" * 40)
+pdf_operations.py:158: log_callback("SPLITTING COMBINED PDF")
+pdf_operations.py:159: log_callback("-" * 40)
+pdf_operations.py:166: log_callback(f"   Combined PDF has {total_pages} pages")
+pdf_operations.py:167: log_callback(f"   Extracting student names from PDF...")
+pdf_operations.py:173: log_callback(f"   Extracted {len(extracted_names)} names from PDF")
+pdf_operations.py:174: log_callback(f"   First 10 names found:")
+pdf_operations.py:176: log_callback(f"      {i:2d}. {name}")
+pdf_operations.py:178: log_callback(f"      ... and {len(extracted_names) - 10} more")
+pdf_operations.py:190: log_callback("")
+pdf_operations.py:191: log_callback(f"Successfully split PDF for {students_processed} students")
+pdf_operations.py:192: log_callback("")
+pdf_operations.py:198: log_callback(f"Error splitting combined PDF: {e}")
+pdf_operations.py:392: log_callback(f"   Could not find folder for: {student_name}")
+pdf_operations.py:396: log_callback(f"   Processing {student_name}: {len(student_pages)} pages")
+pdf_operations.py:397: log_callback(f"      Found folder: {os.path.basename(student_folder)}")
+pdf_operations.py:411: log_callback(f"   No PDF found in {student_name}'s folder")
+pdf_operations.py:417: log_callback(f"      Replacing: {original_pdfs[0]}")
+pdf_operations.py:423: log_callback(f"   {student_name}: {len(student_pages)} pages → {original_pdfs[0]}")
+process_completion_cli.py:47: print(json.dumps(response))
+process_completion_cli.py:69: print(json.dumps(response))
+process_completion_cli.py:91: print(json.dumps(response, ensure_ascii=False))
+process_completion_cli.py:115: def log_callback(message):
+process_completion_cli.py:173: print("\n" + "=" * 60)
+process_completion_cli.py:174: print("COMPLETION PROCESSING COMPLETED")
+process_completion_cli.py:175: print("=" * 60)
+process_completion_cli.py:176: print()
+process_completion_cli.py:179: print(log)
+process_completion_cli.py:181: print()
+process_completion_cli.py:182: print("=" * 60)
+process_completion_cli.py:183: print("PROCESSING FINISHED")
+process_completion_cli.py:184: print("=" * 60)
+process_completion_cli.py:194: print(json.dumps(response), file=sys.stderr)
+process_completion_cli.py:215: print(json.dumps(error_response), file=sys.stderr)
+process_quiz_cli.py:36: print(json.dumps({
+process_quiz_cli.py:50: console.print()
+process_quiz_cli.py:51: console.print(Panel.fit(
+process_quiz_cli.py:56: console.print()
+process_quiz_cli.py:67: console.print("[error]✗ ZIP file not found[/error]")
+process_quiz_cli.py:73: print(json.dumps(response))
+process_quiz_cli.py:77: console.print(f"[success]✓[/success] Using: [cyan]{os.path.basename(selected_zip)}[/cyan]")
+process_quiz_cli.py:81: console.print("[info]🔍 Searching Downloads folder...[/info]")
+process_quiz_cli.py:92: console.print("[error]✗ No ZIP files found[/error]")
+process_quiz_cli.py:98: print(json.dumps(response))
+process_quiz_cli.py:103: console.print(f"[warning]⚠ Found {len(zip_files)} ZIP files[/warning]")
+process_quiz_cli.py:104: console.print()
+process_quiz_cli.py:123: console.print(table)
+process_quiz_cli.py:124: console.print()
+process_quiz_cli.py:137: print(json.dumps(response, ensure_ascii=False))
+process_quiz_cli.py:142: console.print(f"[success]✓[/success] Found: [cyan]{os.path.basename(selected_zip)}[/cyan]")
+process_quiz_cli.py:152: console.print()
+process_quiz_cli.py:153: console.print(Panel(
+process_quiz_cli.py:164: def log_callback(message):
+process_quiz_cli.py:169: console.print(f"[error]{message}[/error]")
+process_quiz_cli.py:171: console.print(f"[success]{message}[/success]")
+process_quiz_cli.py:173: console.print(f"[warning]{message}[/warning]")
+process_quiz_cli.py:175: console.print(f"[dim]{message}[/dim]")
+process_quiz_cli.py:177: console.print(message)
+process_quiz_cli.py:197: console.print()
+process_quiz_cli.py:198: console.print(Panel.fit(
+process_quiz_cli.py:204: console.print()
+process_quiz_cli.py:214: print(json.dumps(response), file=sys.stderr)
+process_quiz_cli.py:229: console.print()
+process_quiz_cli.py:230: console.print(Panel.fit(
+process_quiz_cli.py:235: console.print()
+process_quiz_cli.py:244: print(json.dumps(error_response), file=sys.stderr)
+split_pdf_cli.py:252: log_callback("❌ Grade processing folder not found")
+split_pdf_cli.py:258: log_callback(f"📦 Creating new ZIP: {original_zip_name}")
+split_pdf_cli.py:279: log_callback("   Using preserved original index.html (exact copy)")
+split_pdf_cli.py:289: log_callback("   Using original index.html from extraction (exact copy)")
+split_pdf_cli.py:292: log_callback("   Warning: No original index.html found, generating new one")
+split_pdf_cli.py:297: log_callback("   Generated new index.html (fallback - may not work with D2L)")
+split_pdf_cli.py:315: log_callback("   Added index.html to ZIP root")
+split_pdf_cli.py:321: log_callback(f"   Added root file: {file_name}")
+split_pdf_cli.py:336: log_callback(f"Added: {arcname}")
+split_pdf_cli.py:338: log_callback(f"✅ Created ZIP file: {new_zip_path}")
+split_pdf_cli.py:342: log_callback(f"❌ Error creating ZIP: {str(e)}")
+split_pdf_cli.py:344: log_callback(f"   Details: {traceback.format_exc()}")
+split_pdf_cli.py:350: print(json.dumps({
+split_pdf_cli.py:374: def log_callback(message):
+split_pdf_cli.py:442: print(json.dumps(response))
+split_pdf_cli.py:469: print(json.dumps(error_response))
+submission_processor.py:29: log_callback("")
+submission_processor.py:30: log_callback("-" * 40)
+submission_processor.py:31: log_callback("PROCESSING STUDENT SUBMISSIONS")
+submission_processor.py:32: log_callback("-" * 40)
+submission_processor.py:56: log_callback("")
+submission_processor.py:57: log_callback(f"Found {len(submission_map)} unique students (after filtering duplicates)")
+submission_processor.py:58: log_callback("")
+submission_processor.py:71: log_callback(f"   {name}: Could not match to roster")
+submission_processor.py:103: log_callback("")
+submission_processor.py:104: log_callback("Students who submitted multiple PDFs (combined automatically):")
+submission_processor.py:106: log_callback(f"   • {student_name}")
+submission_processor.py:175: log_callback(f"   {name}: Found newer submission, using that")
+submission_processor.py:267: log_callback(f"   {name}: Matched using name parts → {roster_name}")
+submission_processor.py:307: log_callback(f"   {result['error']}")
+submission_processor.py:313: log_callback(msg)
+submission_processor.py:339: log_callback(msg)
+submission_processor.py:357: log_callback(msg)

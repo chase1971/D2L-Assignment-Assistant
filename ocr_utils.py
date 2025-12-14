@@ -6,6 +6,17 @@ import os
 from PIL import Image, ImageEnhance
 import numpy as np
 
+from grading_constants import (
+    API_TIMEOUT_SECONDS,
+    MIN_RED_PIXELS_THRESHOLD,
+    GRAYSCALE_DARK_THRESHOLD,
+    BRIGHTNESS_THRESHOLD,
+    RED_DOMINANCE_OFFSET,
+    RED_COMBINED_OFFSET,
+    CONTRAST_ENHANCE_FACTOR,
+    CONTRAST_ENHANCE_FINAL,
+)
+
 # Google Cloud Vision API Key
 GOOGLE_VISION_API_KEY = "AIzaSyDWBzzSzj1YVCpEbr-P0PkriqrFuKL_ySs"
 
@@ -46,7 +57,7 @@ def extract_text_google_vision(img, return_confidence=False):
             }]
         }
         
-        response = requests.post(url, json=request_body, timeout=10)
+        response = requests.post(url, json=request_body, timeout=API_TIMEOUT_SECONDS)
         
         if response.status_code == 200:
             result = response.json()
@@ -79,14 +90,14 @@ def isolate_red_text(img):
     if img.mode != 'RGB':
         img_gray = img.convert('L')
         img_array = np.array(img_gray)
-        dark_mask = img_array < 180
+        dark_mask = img_array < GRAYSCALE_DARK_THRESHOLD
         
         result = np.ones_like(img_array) * 255
         result[dark_mask] = img_array[dark_mask]
         
         result_img = Image.fromarray(result.astype('uint8'))
         enhancer = ImageEnhance.Contrast(result_img)
-        return enhancer.enhance(2.0)
+        return enhancer.enhance(CONTRAST_ENHANCE_FACTOR)
     
     img_array = np.array(img)
     
@@ -94,16 +105,16 @@ def isolate_red_text(img):
     g = img_array[:, :, 1].astype(float)
     b = img_array[:, :, 2].astype(float)
     
-    red_mask = ((r > g + 20) & (r > b + 20)) | (r > (g + b) / 2 + 30)
+    red_mask = ((r > g + RED_DOMINANCE_OFFSET) & (r > b + RED_DOMINANCE_OFFSET)) | (r > (g + b) / 2 + RED_COMBINED_OFFSET)
     brightness = (r + g + b) / 3
-    dark_enough = brightness < 200
+    dark_enough = brightness < BRIGHTNESS_THRESHOLD
     final_mask = red_mask & dark_enough
     
     red_pixel_count = np.sum(final_mask)
     
-    if red_pixel_count < 50:
+    if red_pixel_count < MIN_RED_PIXELS_THRESHOLD:
         gray = (r + g + b) / 3
-        dark_mask = gray < 180
+        dark_mask = gray < GRAYSCALE_DARK_THRESHOLD
         result = np.ones_like(img_array) * 255
         result[dark_mask] = [0, 0, 0]
     else:
@@ -113,7 +124,7 @@ def isolate_red_text(img):
     result_img = Image.fromarray(result.astype('uint8'))
     result_gray = result_img.convert('L')
     enhancer = ImageEnhance.Contrast(result_gray)
-    result_gray = enhancer.enhance(2.5)
+    result_gray = enhancer.enhance(CONTRAST_ENHANCE_FINAL)
     
     return result_gray
 

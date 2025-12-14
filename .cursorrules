@@ -1,0 +1,232 @@
+# D2L Assignment Assistant - Cursor Rules
+
+## Project Overview
+This is a desktop application for grading D2L/Brightspace assignment submissions. It has a React frontend, Node.js backend (server.js), and Python scripts for PDF processing and grade extraction.
+
+**Development Phase: Polish** - Handle edge cases, improve error messages, clean up shortcuts.
+
+---
+
+## Pattern Files
+
+### Local Project Patterns (.cursor-patterns/)
+**Located in this project's `.cursor-patterns/` folder:**
+- `d2l-automation.md` - D2L/Playwright/Selenium automation patterns
+- `selenium-patterns.md` - WebDriver patterns, element interaction, waits
+- `code-style.md` - Python style guidelines, error handling, logging
+- `refactoring-checklist.md` - Phased refactoring approach (Phase 1-5)
+- `README.md` - Guide to using these patterns
+
+### Global Patterns (cursor-patterns folder)
+**Located at `C:\Users\chase\Documents\Programs\cursor-patterns\`:**
+- `coding-standards.md` - Code quality, naming conventions
+- `refactoring-checklist.md` - Cleanup phases
+- `anti-patterns.md` - Common mistakes to avoid
+- `logging-standards.md` - Emoji catalog and message formats
+
+---
+
+## Quick Reference: Coding Standards
+
+### Naming Conventions
+- **Python**: `snake_case` for functions/variables
+- **TypeScript**: `camelCase` for functions/variables
+- **React Components**: `PascalCase`
+- **Constants**: `UPPER_SNAKE_CASE`
+
+### Core Principles
+- **DRY**: Extract common code into helpers
+- **Single Responsibility**: Each function does ONE thing
+- **Fail Fast**: Validate inputs early, return early for edge cases
+- **API Responses**: Always `{ success, error?, data? }` shape
+
+### File Size Limits
+- Max 800 lines per file
+- Extract to separate modules when approaching limit
+
+### Helper Function Pattern (Python)
+```python
+def make_error_response(error_msg: str, logs: list = None) -> dict:
+    return {"success": False, "error": error_msg, "logs": (logs or []) + [error_msg]}
+```
+
+---
+
+## Planning Guidelines (For Cursor Plan Mode)
+
+### When to Create a Plan
+
+Create a structured plan when the task involves:
+- Multiple files (3+)
+- UI → logic wiring
+- State management changes
+- Integration with existing systems
+
+**Do NOT plan for:**
+- Single file edits
+- Adding helper functions
+- Bug fixes in isolated code
+- Small refactors
+
+### Default Planning Format (BRIEF)
+
+Use this format for execution-focused tasks:
+
+```
+FILES TO MODIFY:
+1. <filename> - <one line description>
+2. <filename> - <one line description>
+
+EXECUTION ORDER:
+1. <action> (<file affected>)
+2. <action> (<file affected>)
+
+DO NOT TOUCH:
+- <file/component> - <reason>
+
+RISKS/UNKNOWNS:
+- <potential issue to verify>
+```
+
+**Rules for brief plans:**
+- No prose, no paragraphs - only structured lists
+- One line per item (under 15 words)
+- No code snippets in plans
+- Maximum 30 lines total
+- Token usage: 5-10% of what implementation would take
+
+### When to Use DETAILED Planning
+
+Use detailed planning (ignore brevity rules) when user asks for:
+
+**1. Greenfield Application Architecture**
+- User says: "I have an idea for an app..." or "Design a new application..."
+- Include: architecture overview, tech stack with rationale, data model, component hierarchy
+
+**2. Complex Refactoring Strategy**
+- User says: "How should I refactor..." or "What's the best way to restructure..."
+- Include: current vs proposed architecture, migration path, testing strategy
+
+**3. System Design / Technical Decisions**
+- User says: "Should I use X or Y?" or "What's the best approach for..."
+- Include: multiple approaches with pros/cons, trade-off analysis, recommendations
+
+**4. Learning / Educational Context**
+- User says: "Explain how..." or "Teach me about..."
+- Include: conceptual explanations, examples, step-by-step breakdowns
+
+### Code Quality During Planning
+
+When planning implementation:
+- **DO** follow good practices by default (clear names, proper structure, error handling)
+- **DO** get it working first, then refactor if needed
+- **DON'T** obsess over arbitrary limits (e.g., "line 499 exceeds 400 line limit, must split NOW")
+- **DON'T** over-engineer before proving it works
+
+**Philosophy**: Build it right the first time where practical, but don't let perfect be the enemy of done.
+
+### After Creating a Plan
+
+1. **Stop and wait for approval**
+2. Do NOT automatically start implementing
+3. If approved, implement ONE step at a time when directed
+4. If told "implement step 1", only do step 1, then stop
+
+---
+
+## Quick Reference: Refactoring Checklist
+
+### Phase 1: Quick Wins
+- [ ] Remove dead code
+- [ ] Magic numbers → named constants
+- [ ] Consolidate duplicate code
+
+### Phase 2: Structure
+- [ ] Split files over 800 lines
+- [ ] Group related functions
+- [ ] Extract helper modules
+
+### Phase 3: Patterns
+- [ ] Consistent error handling
+- [ ] Input validation at boundaries
+- [ ] API response standardization
+
+---
+
+## Critical Rule: Maintain User Message Preview
+
+**Whenever you add, modify, or remove any user-facing log message in the application, you MUST also update `preview_user_messages.py`.**
+
+The `SCENARIOS` dictionary in that file contains all user-facing messages organized by operation type. This allows the user to preview and edit all log messages in one place.
+
+### Files that generate user-facing logs:
+- `src/components/Option2.tsx` - Frontend log messages (addLog calls)
+- `src/components/LogTerminal.tsx` - Log display and filtering
+- `grading_processor.py` - Processing status messages
+- `extract_grades_cli.py` - Grade extraction messages
+- `split_pdf_cli.py` - PDF split messages
+- `process_quiz_cli.py` - Quiz processing messages
+- `process_completion_cli.py` - Completion processing messages
+- `import_file_handler.py` - Import file validation messages
+- `helper_cli.py` - Folder/class loading messages
+
+### When updating logs:
+1. Make the change in the source file
+2. Update the corresponding scenario in `preview_user_messages.py`
+3. If it's a new operation type, add a new scenario
+
+---
+
+## Architecture
+
+### Frontend (React + TypeScript)
+- `src/components/Option2.tsx` - Main UI component
+- `src/components/LogTerminal.tsx` - Log display terminal
+- `src/services/quizGraderService.ts` - API calls to backend
+
+### Backend (Node.js)
+- `server.js` - Express server, routes Python script calls
+
+### Python Scripts
+- `grading_processor.py` - Core processing logic
+- `import_file_handler.py` - CSV import file operations
+- `pdf_operations.py` - PDF creation and splitting
+- `extract_grades_cli.py` - OCR grade extraction
+- `process_quiz_cli.py` - Quiz processing CLI
+- `process_completion_cli.py` - Completion processing CLI
+- `split_pdf_cli.py` - PDF split and rezip CLI
+
+---
+
+## Code Style
+
+### Python
+- Use Rich library for terminal output (only when not returning JSON)
+- Return clean JSON to stdout for backend parsing
+- Use logging to files, not console, for technical messages
+
+### TypeScript/React
+- Use Tailwind CSS for styling
+- Use the `addLog()` function for user-facing messages
+- Keep error messages user-friendly (no JSON, no technical details)
+
+---
+
+## Error Messages
+
+All error messages should:
+- Start with ❌ emoji
+- Be human-readable (no JSON, no stack traces)
+- Suggest a fix when possible
+- Be added to `preview_user_messages.py`
+
+---
+
+## ZIP File Selection
+
+When multiple ZIP files are found in Downloads:
+- Return clean JSON (no Rich console output before JSON)
+- Frontend shows ZipSelectionModal
+- Don't log the file list - just show the modal
+- After selection, log "📦 Processing: [filename]"
+
