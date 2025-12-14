@@ -121,8 +121,15 @@ def extract_assignment_name(zip_filename):
             "error": str(e)
         }
 
-def open_folder(drive_letter, class_name):
-    """Open the grade processing folder for a class"""
+def open_folder(drive_letter, class_name, open_class_folder_only=False):
+    """
+    Open folder for a class.
+    
+    Args:
+        drive_letter: Drive letter
+        class_name: Class name
+        open_class_folder_only: If True, open class roster folder only. If False, open most recent processing folder.
+    """
     import subprocess
     import platform
     import re
@@ -139,7 +146,17 @@ def open_folder(drive_letter, class_name):
                 "error": f"Class folder not found: {class_folder}"
             }
         
-        # Look for most recent "grade processing [Assignment]" folder
+        # If requested, open class folder directly
+        if open_class_folder_only:
+            from file_utils import open_file_with_default_app
+            open_file_with_default_app(class_folder)
+            return {
+                "success": True,
+                "message": f"Opened class roster folder: {class_folder}",
+                "folder": class_folder
+            }
+        
+        # Otherwise, look for most recent "grade processing [Assignment]" folder
         pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
         processing_folders = []
         

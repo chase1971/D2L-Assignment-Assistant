@@ -65,6 +65,8 @@ export default function Option2() {
   
   // Store PDFs folder paths for selected class
   const [pdfsFolderPath, setPdfsFolderPath] = useState(null);
+  // Store class roster folder path
+  const [classRosterPath, setClassRosterPath] = useState<string | null>(null);
   
   // Clear All Data states
   const [saveFoldersAndPdf, setSaveFoldersAndPdf] = useState(false);
@@ -114,6 +116,33 @@ export default function Option2() {
   // Get theme styles from hook
   const { metalButtonClass, metalButtonStyle } = useThemeStyles();
 
+  // Helper function to clean assignment name and format as folder name
+  const formatAssignmentFolderName = (assignmentName: string, className: string): string => {
+    if (!assignmentName) return '';
+    
+    // Remove "combined PDF" suffix (case insensitive)
+    let cleaned = assignmentName.replace(/\s+combined\s+pdf\s*$/i, '');
+    
+    // Extract class code from class name (e.g., "FM 4202" from "TTH 11-1220 FM 4202")
+    const classCodeMatch = className.match(/([A-Z]{2}\s+\d{4})\s*$/);
+    const classCode = classCodeMatch ? classCodeMatch[1] : '';
+    
+    // Remove class code from assignment name if it's in there
+    if (classCode) {
+      const classCodeRegex = new RegExp(`\\s*${classCode.replace(/\s+/g, '\\s+')}\\s*`, 'gi');
+      cleaned = cleaned.replace(classCodeRegex, ' ').trim();
+    }
+    
+    // Clean up extra spaces
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    // Format as "grade processing [CLASS_CODE] [ASSIGNMENT]" or just "grade processing [ASSIGNMENT]"
+    if (classCode) {
+      return `grade processing ${classCode} ${cleaned}`;
+    }
+    return `grade processing ${cleaned}`;
+  };
+
   // Handle class selection
   const handleClassChange = async (e: any) => {
     const newClass = e.target.value;
@@ -121,18 +150,37 @@ export default function Option2() {
     setPdfsFolderPath(null); // Clear previous path
     setUploadedPdfFile(null); // Clear uploaded file when class changes
     
+    // Clear last processed assignment when class changes (it should only be set after processing quizzes)
+    setLastProcessedAssignment(null);
+    
     if (newClass) {
       // Fetch and store the PDFs folder path for this class
       const pathResult = await getPdfsFolderPath(drive, newClass);
       setPdfsFolderPath(pathResult);
       
+      // Get class roster folder path
+      if (pathResult?.classFolder) {
+        setClassRosterPath(pathResult.classFolder);
+      } else if (pathResult?.targetPath) {
+        // Fallback: Extract class roster folder from PDFs path if classFolder not provided
+        const pdfsPath = pathResult.targetPath;
+        const classRosterFolder = pdfsPath.split(/[/\\]PDFs/)[0]?.split(/[/\\]grade processing/)[0]?.trim() || null;
+        if (classRosterFolder) {
+          setClassRosterPath(classRosterFolder);
+        }
+      }
+      
       if (pathResult) {
         addLog(`✅ Class loaded: ${newClass}`);
-        addLog(`📂 Location: ${pathResult.targetPath}`);
+        // Show class roster folder location, not the PDFs folder
+        const locationPath = pathResult.classFolder || pathResult.targetPath?.split(/[/\\]PDFs/)[0]?.split(/[/\\]grade processing/)[0]?.trim() || pathResult.targetPath;
+        addLog(`📂 Location: ${locationPath}`);
       } else {
         addLog(`✅ Class loaded: ${newClass}`);
-        addLog(`⚠️ Could not determine PDFs folder location`);
+        addLog(`⚠️ Could not determine class folder location`);
       }
+    } else {
+      setClassRosterPath(null);
     }
   };
 
@@ -264,16 +312,7 @@ export default function Option2() {
       if (result.success) {
         addLog('✅ Completion processing completed!');
         addLog('✅ Auto-assigned 10 points to all submissions');
-        // Use combined PDF name if available, otherwise fall back to assignment name
-        const displayName = result.combined_pdf_path 
-          ? result.combined_pdf_path.split('\\').pop()?.replace('.pdf', '') || result.assignment_name
-          : result.assignment_name || zipFilename.replace(/\s*Download.*\.zip$/i, '').trim();
-        
-        setLastProcessedAssignment({
-          name: displayName,
-          className: selectedClass,
-          zipPath: zipPath
-        });
+        // Note: Don't set lastProcessedAssignment for completion - it's only for quiz processing
       } else {
         displayError(result.error);
       }
@@ -348,14 +387,13 @@ export default function Option2() {
     }
 
     setExtracting(true);
-    addLog('🔬 Starting grade extraction...');
     
     try {
       const result = await extractGrades(drive, selectedClass, addLog);
       
-      if (result.success) {
-        addLog('✅ Grade extraction completed successfully!');
-      } else {
+      // Note: Success message is already printed by the backend
+      // Only handle errors if they weren't already displayed in logs
+      if (!result.success) {
         // Error is already displayed in logs from apiCall, but if logs weren't displayed
         // (e.g., network error), display the error separately
         if (result.error && (!result.logs || result.logs.length === 0)) {
@@ -504,7 +542,7 @@ export default function Option2() {
     }
   };
 
-  // Open folder
+  // Open folder (grade processing folder)
   const handleOpenFolder = async () => {
     if (!selectedClass) {
       addLog('❌ Please select a class first');
@@ -522,6 +560,27 @@ export default function Option2() {
         } else {
           addLog(`❌ ${result.error}`);
         }
+      }
+    } catch (error) {
+      addLog(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Open class roster folder (not the processing folder)
+  const handleOpenClassRosterFolder = async () => {
+    if (!selectedClass) {
+      addLog('❌ Please select a class first');
+      return;
+    }
+    
+    try {
+      // Open class roster folder directly (not the processing folder)
+      const result = await openFolder(drive, selectedClass, addLog, true);
+      
+      if (result.success) {
+        addLog('📂 Class roster folder opened');
+      } else {
+        addLog(`❌ ${result.error}`);
       }
     } catch (error) {
       addLog(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -575,9 +634,11 @@ export default function Option2() {
     // If current assignment exists, clear it directly
     if (lastProcessedAssignment) {
       const assignmentName = lastProcessedAssignment.name;
+      // Format as folder name for display (e.g., "grade processing FM 4202 Quiz 4 (7.1 - 7.4)")
+      const folderDisplayName = formatAssignmentFolderName(assignmentName, selectedClass);
       const message = saveFoldersAndPdf
-        ? `This will archive "${assignmentName}" and keep only unzipped folders and combined PDF. Continue?`
-        : `This will delete all data for "${assignmentName}". Continue?`;
+        ? `This will archive "${folderDisplayName}" and keep only unzipped folders and combined PDF. Continue?`
+        : `This will delete all data for "${folderDisplayName}". Continue?`;
       
       setConfirmationConfig({
         title: 'Confirm Clear Data',
@@ -898,16 +959,9 @@ export default function Option2() {
                       Current Assignment:
                     </div>
                     {lastProcessedAssignment && lastProcessedAssignment.className === selectedClass ? (
-                      <button
-                        onClick={handleOpenFolder}
-                        className={`text-sm font-medium truncate block w-full text-left hover:opacity-80 ${
-                          isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-500'
-                        }`}
-                        style={{ textDecoration: 'underline', textUnderlineOffset: '2px' }}
-                        title={`Click to open folder\n${lastProcessedAssignment.name}`}
-                      >
+                      <div className={`text-sm font-medium truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         📄 {lastProcessedAssignment.name}
-                      </button>
+                      </div>
                     ) : (
                       <div className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                         None
@@ -950,9 +1004,9 @@ export default function Option2() {
 
             {/* Clear Data */}
             <ActionCard title="CLEAR DATA" isDark={isDark} titleColor={isDark ? 'text-red-400' : 'text-red-700'}>
-              <div className="flex items-stretch gap-3">
+              <div className="flex items-stretch gap-3 relative">
                 {/* Left column - Checkboxes stacked */}
-                <div className="flex flex-col justify-around flex-1">
+                <div className="flex flex-col justify-around" style={{ maxWidth: '300px', flexShrink: 0 }}>
                   <label className={`flex items-center space-x-2 cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                     <input
                       type="checkbox"
@@ -975,14 +1029,14 @@ export default function Option2() {
                 </div>
                 
                 {/* Right column - Button spanning full height */}
-                <div className="flex items-center px-5">
+                <div className="flex items-center justify-center flex-1" style={{ marginLeft: '-80px' }}>
                   <button
                     onClick={handleClearAllData}
                     disabled={!selectedClass || clearing}
                     className={`rounded-lg transition-all border-2 shadow-lg font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed`}
                     style={{ 
                       fontSize: '18px', 
-                      padding: '12px 24px',
+                      padding: '12px 40px',
                       backgroundColor: isDark ? '#dc2626' : '#ef4444',
                       borderColor: isDark ? '#b91c1c' : '#dc2626',
                     }}

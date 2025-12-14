@@ -21,6 +21,7 @@ from import_file_handler import validate_import_file_early, validate_required_co
 from grading_constants import REQUIRED_COLUMNS_COUNT, END_OF_LINE_COLUMN_INDEX, CONFIDENCE_HIGH, CONFIDENCE_MEDIUM
 from file_utils import open_file_with_default_app
 from grading_processor import format_error_message
+from user_logger import user_log, dev_log
 
 
 def _validate_import_file_structure(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, str]:
@@ -243,7 +244,8 @@ def _format_extraction_results(
     student_grades: List[Dict],
     extraction_errors: List[str],
     low_confidence_students: List[str],
-    skipped_students: List[Dict]
+    skipped_students: List[Dict],
+    roster_students: List[str] = None
 ) -> None:
     """
     Format and print extraction results to stdout.
@@ -255,87 +257,198 @@ def _format_extraction_results(
         low_confidence_students: List of low confidence student messages
         skipped_students: List of skipped student dicts
     """
-    # Print logs directly to stdout so they show in the frontend
-    print("🔬 Starting grade extraction...")
-    print("")
+    # Organize issues into four categories, avoiding duplicates
+    no_grade_found = []  # Students with no grade found
+    low_confidence = []  # Students with low confidence grades
+    name_matching = []    # Fuzzy name matches
+    no_submissions = []   # Students with no submissions at all
     
-    # Show all extracted grades with confidence levels
-    if student_grades:
-        print("📋 EXTRACTED GRADES:")
-        for i, sg in enumerate(student_grades, 1):
-            conf = sg['confidence']
-            conf_indicator = "✅" if conf >= CONFIDENCE_HIGH else "⚠️" if conf >= CONFIDENCE_MEDIUM else "❌"
-            print(f"   {i:2d}. {sg['name']}: {sg['grade']} {conf_indicator} (confidence: {conf:.2f})")
-    elif grades_result:
-        # Fallback: show from grades_result if student_grades wasn't populated
-        print("📋 EXTRACTED GRADES:")
-        for i, (name, grade_info) in enumerate(grades_result.items(), 1):
-            if isinstance(grade_info, dict):
-                grade = grade_info.get('grade', '')
-                conf = grade_info.get('confidence', 0)
-            else:
-                grade = str(grade_info)
-                conf = 0
-            conf_indicator = "✅" if conf >= CONFIDENCE_HIGH else "⚠️" if conf >= CONFIDENCE_MEDIUM else "❌"
-            print(f"   {i:2d}. {name}: {grade} {conf_indicator} (confidence: {conf:.2f})")
+    # Track which students we've already added to avoid duplicates
+    seen_students = set()
     
-    print("")
-    print(f"📊 Processed {len(grades_result) if grades_result else 0} students")
+    # Helper to extract student name from various message formats
+    def extract_student_name(msg):
+        """Extract student name from message string"""
+        # Handle formats like "Name: grade (message)" or "Name → matched to..."
+        if " → " in msg:
+            return msg.split(" → ")[0].strip()
+        if ": " in msg:
+            return msg.split(": ")[0].strip()
+        return msg.strip()
     
-    # Collect all errors and warnings for display at the end
-    all_issues = []
-    
-    # Show low confidence students
-    if low_confidence_students:
-        for student in low_confidence_students:
-            all_issues.append(("WARNING", f"⚠️ {student}"))
-    
-    # Show fuzzy matches (these are warnings but still successful matches)
+    # Process fuzzy matches first (name matching issues) - these are separate from other issues
     fuzzy_warnings = [err for err in extraction_errors if "fuzzy match" in err]
-    if fuzzy_warnings:
-        for warning in fuzzy_warnings:
-            all_issues.append(("WARNING", f"⚠️ {warning}"))
+    for warning in fuzzy_warnings:
+        clean_warning = warning.replace("⚠️ ", "").replace("❌ ", "").strip()
+        student_name = extract_student_name(clean_warning)
+        if student_name not in seen_students:
+            name_matching.append(clean_warning)
+            seen_students.add(student_name)
     
-    # Show actual errors (unmatched students)
-    actual_errors = [err for err in extraction_errors if "fuzzy match" not in err]
-    if actual_errors:
-        for error in actual_errors:
-            all_issues.append(("ERROR", error))
-    
-    # Add skipped students (couldn't match to roster)
-    if skipped_students:
-        for skipped in skipped_students:
-            grade_display = skipped['grade'] if skipped['grade'] and skipped['grade'] != "No grade found" else "(no grade found)"
-            conf_info = f", confidence: {skipped['confidence']:.2f}" if skipped['confidence'] > 0 else ""
-            all_issues.append(("ERROR", f"{skipped['name']}: {grade_display}{conf_info} - {skipped['reason']}"))
-    
-    # Check for low confidence in extracted grades (only if not already reported)
+    # Process all grades from grades_result - this is the primary source
     if grades_result:
         for name, grade_info in grades_result.items():
+            # Skip if already in name matching (fuzzy matches take priority)
+            if name in [extract_student_name(nm) for nm in name_matching]:
+                continue
+                
             if isinstance(grade_info, dict):
                 conf = grade_info.get('confidence', 1.0)
                 grade = grade_info.get('grade', '')
-                if conf < CONFIDENCE_HIGH:
-                    # Check if already in low_confidence_students or skipped_students
-                    already_reported = any(name in issue[1] for issue in all_issues)
-                    if not already_reported:
-                        grade_display = grade if grade and grade != "No grade found" else "(no grade found)"
-                        all_issues.append(("WARNING", f"⚠️ {name}: {grade_display} (low confidence: {conf:.2f} – needs verification)"))
+                grade_str = str(grade) if grade else ''
+                
+                # Check if no grade found
+                if not grade or grade == "No grade found" or grade_str.strip() == "":
+                    if name not in seen_students:
+                        no_grade_found.append(name)
+                        seen_students.add(name)
+                # Check if low confidence (but has a grade)
+                elif conf < CONFIDENCE_HIGH:
+                    if name not in seen_students:
+                        low_confidence.append(f"{name}: {grade} (confidence: {conf:.2f})")
+                        seen_students.add(name)
     
-    print("")
-    print("✅ Grade extraction complete!")
+    # Process low_confidence_students list (from matching phase) - these are pre-formatted messages
+    # Format: "Name: grade (low confidence – needs verification)"
+    # Note: These may not have confidence values, so we'll try to get them from grades_result
+    if low_confidence_students:
+        for student_msg in low_confidence_students:
+            clean_msg = student_msg.replace("⚠️ ", "").replace("❌ ", "").strip()
+            student_name = extract_student_name(clean_msg)
+            
+            # Skip if already categorized or in name matching
+            if student_name in seen_students or student_name in [extract_student_name(nm) for nm in name_matching]:
+                continue
+            
+            # Check if it's a "no grade found" message
+            if "(no grade found)" in clean_msg.lower():
+                no_grade_found.append(student_name)
+                seen_students.add(student_name)
+            # Otherwise it's a low confidence message
+            elif "low confidence" in clean_msg.lower():
+                # Try to get confidence from grades_result if available
+                conf_val = None
+                if grades_result and student_name in grades_result:
+                    grade_info = grades_result[student_name]
+                    if isinstance(grade_info, dict):
+                        conf_val = grade_info.get('confidence', None)
+                
+                # Extract grade from message format: "Name: grade (low confidence...)"
+                if ": " in clean_msg:
+                    grade_part = clean_msg.split(": ", 1)[1].split("(")[0].strip()
+                    if conf_val is not None:
+                        low_confidence.append(f"{student_name}: {grade_part} (confidence: {conf_val:.2f})")
+                    else:
+                        # Fallback: use message but try to extract confidence if present
+                        import re
+                        conf_match = re.search(r'confidence[:\s]+([\d.]+)', clean_msg, re.IGNORECASE)
+                        if conf_match:
+                            conf_val = float(conf_match.group(1))
+                            low_confidence.append(f"{student_name}: {grade_part} (confidence: {conf_val:.2f})")
+                        else:
+                            low_confidence.append(f"{student_name}: {grade_part} (low confidence)")
+                else:
+                    low_confidence.append(clean_msg)
+                seen_students.add(student_name)
     
-    # Display errors and warnings at the end
-    if all_issues:
-        print("")
-        print("⚠️ ISSUES FOUND (Please Review):")
-        for issue_type, issue_msg in all_issues:
-            # Remove any existing error/warning symbols to avoid duplicates
-            clean_msg = issue_msg.replace("❌ ", "").replace("⚠️ ", "").strip()
-            if issue_type == "ERROR":
-                print(f"   ❌ {clean_msg}")
-            else:
-                print(f"   ⚠️ {clean_msg}")
+    # Process skipped students (couldn't match to roster)
+    if skipped_students:
+        for skipped in skipped_students:
+            name = skipped['name']
+            # Skip if already categorized
+            if name in seen_students or name in [extract_student_name(nm) for nm in name_matching]:
+                continue
+                
+            grade_val = skipped.get('grade', '')
+            conf = skipped.get('confidence', 0)
+            
+            if not grade_val or grade_val == "No grade found":
+                no_grade_found.append(name)
+            elif conf < CONFIDENCE_HIGH:
+                grade_display = grade_val if grade_val else "(no grade found)"
+                low_confidence.append(f"{name}: {grade_display} (confidence: {conf:.2f})")
+            seen_students.add(name)
+    
+    # Process other extraction errors (non-fuzzy)
+    actual_errors = [err for err in extraction_errors if "fuzzy match" not in err]
+    for error in actual_errors:
+        clean_error = error.replace("⚠️ ", "").replace("❌ ", "").strip()
+        student_name = extract_student_name(clean_error)
+        if student_name not in seen_students and student_name not in [extract_student_name(nm) for nm in name_matching]:
+            if "(no grade found)" in clean_error.lower() or "no grade" in clean_error.lower():
+                no_grade_found.append(student_name)
+                seen_students.add(student_name)
+    
+    # Find students with no submissions (in roster but not in grades_result)
+    if roster_students:
+        # Get all students who have grades extracted (from grades_result keys)
+        students_with_grades = set(grades_result.keys() if grades_result else [])
+        
+        # Also include students from skipped_students (they tried to submit but couldn't match)
+        for skipped in skipped_students:
+            students_with_grades.add(skipped['name'])
+        
+        # Find roster students who are not in the extracted grades
+        for roster_student in roster_students:
+            # Normalize names for comparison (case-insensitive)
+            roster_lower = roster_student.lower().strip()
+            found = False
+            
+            # Check if this roster student appears in any extracted grades
+            for extracted_name in students_with_grades:
+                if extracted_name.lower().strip() == roster_lower:
+                    found = True
+                    break
+            
+            # Also check fuzzy matches
+            if not found:
+                for fuzzy_match in name_matching:
+                    fuzzy_name = extract_student_name(fuzzy_match).lower().strip()
+                    if fuzzy_name == roster_lower:
+                        found = True
+                        break
+            
+            # If not found in any category, they have no submission
+            if not found and roster_student not in seen_students:
+                no_submissions.append(roster_student)
+    
+    # Display issues organized by category
+    has_issues = no_grade_found or low_confidence or name_matching or no_submissions
+    if has_issues:
+        user_log("")
+        user_log("ISSUES FOUND (Please Review):")
+        
+        # Category 1: No Grade Found
+        if no_grade_found:
+            user_log("")
+            user_log("❌ NO GRADE FOUND:")
+            for student in sorted(set(no_grade_found)):
+                user_log(f"  {student}")
+        
+        # Category 2: Low Confidence
+        if low_confidence:
+            user_log("")
+            user_log("❌ LOW CONFIDENCE (needs verification):")
+            for item in sorted(set(low_confidence)):
+                user_log(f"  {item}")
+        
+        # Category 3: Name Matching Issues
+        if name_matching:
+            user_log("")
+            user_log("⚠️ NAME MATCHING ISSUES (fuzzy match - needs verification):")
+            for item in sorted(set(name_matching)):
+                user_log(f"  {item}")
+        
+        # Category 4: No Submissions
+        if no_submissions:
+            user_log("")
+            user_log("❌ NO SUBMISSIONS:")
+            for student in sorted(set(no_submissions)):
+                user_log(f"  {student}")
+    
+    # Print completion message (this triggers the "Open Import File" button in frontend)
+    user_log("")
+    user_log("✅ Grade extraction completed successfully!")
 
 
 def main() -> None:
@@ -387,6 +500,10 @@ def main() -> None:
             print(json.dumps(response))
             sys.exit(1)
         
+        # Print starting message after validation passes
+        user_log("🔬 Starting grade extraction...")
+        user_log("")
+        
         # Find the most recent "grade processing [Assignment]" folder
         import re
         pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
@@ -419,6 +536,27 @@ def main() -> None:
         if not combined_pdf_path or not os.path.exists(combined_pdf_path):
             raise Exception("Combined PDF not found")
         
+        # Load CSV BEFORE extraction so we can pass roster names for fuzzy matching
+        import_file_path = os.path.join(class_folder, "Import File.csv")
+        if not os.path.exists(import_file_path):
+            raise Exception("Import file not found")
+        
+        df = pd.read_csv(import_file_path)
+        
+        # Validate and prepare import file structure
+        df, eol_index, quiz_column = _validate_import_file_structure(df)
+        
+        # Build roster names list for fuzzy matching during extraction
+        roster_names = []
+        csv_name_map = {}
+        for idx, row in df.iterrows():
+            first = str(row['First Name']).strip()
+            last = str(row['Last Name']).strip()
+            full_name = f"{first} {last}"
+            full_name_lower = f"{first.lower()} {last.lower()}"
+            roster_names.append(full_name)  # Keep original case for display
+            csv_name_map[full_name_lower] = idx
+        
         # Close any open instances of Excel and PDF viewers to avoid file locking
         try:
             import subprocess
@@ -439,7 +577,15 @@ def main() -> None:
         student_grades = []  # Track all students with their grades and confidence
         
         def log_callback(message):
-            # Collect all log messages
+            # Route messages to appropriate logger based on content
+            # Most messages from extract_grades_simple are user-facing
+            # Debug messages (with "🔍 DEBUG:") are developer-only
+            if message and "🔍 DEBUG:" in message:
+                dev_log(message)
+            else:
+                user_log(message)
+            
+            # Collect all log messages for tracking
             all_logs.append(message)
             # Also track student grades as they're extracted
             if "📊 Grade:" in message:
@@ -468,7 +614,8 @@ def main() -> None:
                 except Exception:
                     pass
         
-        grades_result = extract_grades(combined_pdf_path, log_callback)
+        # Pass roster names to extract_grades for fuzzy matching during extraction
+        grades_result = extract_grades(combined_pdf_path, log_callback, roster_names=roster_names)
         
         # Initialize error tracking lists BEFORE first use
         extraction_errors = []
@@ -478,25 +625,6 @@ def main() -> None:
         if not grades_result:
             extraction_errors.append("❌ No grades were extracted from the PDF")
             grades_result = {}  # Set to empty dict to avoid errors
-        
-        # Update CSV
-        import_file_path = os.path.join(class_folder, "Import File.csv")
-        if not os.path.exists(import_file_path):
-            extraction_errors.append("❌ Import file not found")
-            raise Exception("Import file not found")
-        
-        df = pd.read_csv(import_file_path)
-        
-        # Validate and prepare import file structure
-        df, eol_index, quiz_column = _validate_import_file_structure(df)
-        
-        # Build a map of full names from CSV for fuzzy matching
-        csv_name_map = {}
-        for idx, row in df.iterrows():
-            first = str(row['First Name']).strip().lower()
-            last = str(row['Last Name']).strip().lower()
-            full_name = f"{first} {last}"
-            csv_name_map[full_name] = idx
         
         # Match grades to roster
         updated_count, matching_errors, fuzzy_matches, skipped_students, verify_rows = _match_grades_to_roster(
@@ -534,7 +662,7 @@ def main() -> None:
         # Format and display results
         _format_extraction_results(
             grades_result, student_grades, extraction_errors, 
-            low_confidence_students, skipped_students
+            low_confidence_students, skipped_students, roster_names
         )
         
     except Exception as e:

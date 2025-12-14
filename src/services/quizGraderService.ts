@@ -216,7 +216,8 @@ export const getPdfsFolderPath = async (drive: string, selectedClass: string): P
     if (data.success && data.path) {
       return {
         targetPath: data.path,
-        existingPath: data.existingPath || data.path
+        existingPath: data.existingPath || data.path,
+        classFolder: data.classFolder || null
       };
     }
     
@@ -228,10 +229,10 @@ export const getPdfsFolderPath = async (drive: string, selectedClass: string): P
   }
 };
 
-export const openFolder = (drive: string, selectedClass: string, addLog: LogCallback): Promise<ApiResult> =>
+export const openFolder = (drive: string, selectedClass: string, addLog: LogCallback, classFolderOnly: boolean = false): Promise<ApiResult> =>
   apiCall({
     endpoint: '/quiz/open-folder',
-    body: { drive, className: selectedClass },
+    body: { drive, className: selectedClass, classFolderOnly },
     errorMessage: 'Failed to open folder',
     addLog
   });

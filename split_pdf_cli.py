@@ -246,7 +246,20 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, log_cal
         rosters_path = get_rosters_path()
         class_folder_path = os.path.join(rosters_path, class_name)
         
-        processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+        # Try to find processing folder - handle both new format (with class code) and old format
+        from grading_processor import extract_class_code
+        class_code = extract_class_code(class_name)
+        
+        # Try new format first (with class code)
+        if class_code:
+            processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
+            if not os.path.exists(processing_folder):
+                # Fallback to old format (without class code)
+                processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+        else:
+            # No class code, use old format
+            processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+        
         unzipped_folder = os.path.join(processing_folder, "unzipped folders")
         
         if not os.path.exists(unzipped_folder):

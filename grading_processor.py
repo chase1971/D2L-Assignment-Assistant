@@ -395,7 +395,15 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path, log_call
         # Get configured rosters path
         rosters_path = get_rosters_path()
         class_folder_path = os.path.join(rosters_path, class_folder_name)
-        processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+        
+        # Extract class code (e.g., "CA 4203") and include it in folder name
+        class_code = extract_class_code(class_folder_name)
+        if class_code:
+            processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
+        else:
+            # Fallback if class code can't be extracted
+            processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+        
         unzipped_folder = os.path.join(processing_folder, "unzipped folders")
         pdf_output_folder = os.path.join(processing_folder, "PDFs")
         unreadable_folder = os.path.join(processing_folder, "unreadable")
@@ -406,8 +414,8 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path, log_call
             log_callback(f"Processing folder: {processing_folder}")
             log_callback("-" * 60)
         
-        # Backup existing processing folder if it exists
-        backup_existing_folder(processing_folder, log_callback)
+        # Backup existing processing folder if it exists (default to backup, not overwrite)
+        backup_existing_folder(processing_folder, log_callback, overwrite=False)
         
         if log_callback:
             log_callback(f"Assignment: {assignment_name}")
@@ -464,7 +472,8 @@ def _setup_processing_environment(
     drive_letter: str,
     class_folder_name: str,
     assignment_name: str,
-    log_callback: Optional[Callable] = None
+    log_callback: Optional[Callable] = None,
+    overwrite: bool = False
 ) -> Tuple[str, str, str, str, str]:
     """
     Set up processing environment: get paths, backup existing folder.
@@ -474,13 +483,22 @@ def _setup_processing_environment(
         class_folder_name: Name of class folder
         assignment_name: Name of the assignment being processed
         log_callback: Optional callback for logging
+        overwrite: If True, delete existing folder. If False, create numbered backup.
     
     Returns:
         Tuple of (class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder)
     """
     rosters_path = get_rosters_path()
     class_folder_path = os.path.join(rosters_path, class_folder_name)
-    processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+    
+    # Extract class code (e.g., "CA 4203") and include it in folder name
+    class_code = extract_class_code(class_folder_name)
+    if class_code:
+        processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
+    else:
+        # Fallback if class code can't be extracted
+        processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+    
     unzipped_folder = os.path.join(processing_folder, "unzipped folders")
     pdf_output_folder = os.path.join(processing_folder, "PDFs")
     unreadable_folder = os.path.join(processing_folder, "unreadable")
@@ -492,7 +510,7 @@ def _setup_processing_environment(
         log_callback("-" * 60)
     
     # Backup existing processing folder if it exists
-    backup_existing_folder(processing_folder, log_callback)
+    backup_existing_folder(processing_folder, log_callback, overwrite=overwrite)
     
     return class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder
 
@@ -669,13 +687,24 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, log_callback:
                 assignment_name = match.group(1).strip()
 
             # Find the processing folder for this assignment
+            # Try new format first (with class code), then old format
             if assignment_name:
-                processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+                class_code = extract_class_code(class_folder_name)
+                if class_code:
+                    # Try new format: "grade processing CA 4203 Quiz 4"
+                    processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
+                    if not os.path.exists(processing_folder):
+                        # Fallback to old format: "grade processing Quiz 4"
+                        processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+                else:
+                    # No class code, use old format
+                    processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
 
             if log_callback:
                 log_callback(f"Using provided PDF: {os.path.basename(combined_pdf_path)}")
         else:
             # No PDF path provided - find the most recent processing folder
+            # Pattern matches both: "grade processing [CLASS_CODE] [ASSIGNMENT]" and "grade processing [ASSIGNMENT]"
             pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
             processing_folders = []
             

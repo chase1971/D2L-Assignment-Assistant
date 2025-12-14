@@ -17,6 +17,24 @@ from config_reader import get_rosters_path
 from typing import List, Dict, Tuple
 
 
+def extract_class_code(class_folder_name: str) -> str:
+    """
+    Extract class code (e.g., "FM 4202") from class folder name.
+    
+    Examples:
+        "TTH 11-1220 FM 4202" -> "FM 4202"
+        "MW 930-1050 CA 4105" -> "CA 4105"
+    """
+    # Look for pattern: 2 letters, space, 4 digits at the end
+    match = re.search(r'([A-Z]{2}\s+\d{4})\s*$', class_folder_name)
+    if match:
+        return match.group(1)
+    # Fallback: try to extract last 7 characters
+    if len(class_folder_name) >= 7:
+        return class_folder_name[-7:].strip()
+    return ""
+
+
 def force_remove_readonly(func, path, exc):
     """Remove read-only files and directories"""
     if os.path.exists(path):
@@ -371,9 +389,58 @@ def main():
         
         # Find the target processing folder
         if assignment_name:
-            processing_folder = os.path.join(class_folder, f"grade processing {assignment_name}")
+            # Check if assignment_name already includes the prefix
+            if assignment_name.lower().startswith("grade processing ") or assignment_name.lower().startswith("archived "):
+                # Use the folder name directly
+                processing_folder = os.path.join(class_folder, assignment_name)
+            else:
+                # Clean the assignment name - remove "combined PDF", class code, and other suffixes
+                cleaned_assignment = assignment_name
+                
+                # Remove "combined PDF" suffix (case insensitive)
+                cleaned_assignment = re.sub(r'\s+combined\s+pdf\s*$', '', cleaned_assignment, flags=re.IGNORECASE)
+                
+                # Extract class code from class name
+                class_code = extract_class_code(class_name)
+                
+                # Remove class code from assignment name if it's in there (e.g., "Quiz 4 FM 4202" -> "Quiz 4")
+                if class_code:
+                    # Remove class code pattern from assignment name
+                    class_code_pattern = re.escape(class_code)
+                    cleaned_assignment = re.sub(r'\s*' + class_code_pattern + r'\s*', ' ', cleaned_assignment, flags=re.IGNORECASE)
+                    cleaned_assignment = cleaned_assignment.strip()
+                
+                # Clean up any extra spaces
+                cleaned_assignment = re.sub(r'\s+', ' ', cleaned_assignment).strip()
+                
+                # Construct folder name with class code
+                if class_code:
+                    processing_folder = os.path.join(class_folder, f"grade processing {class_code} {cleaned_assignment}")
+                else:
+                    # Fallback if class code can't be extracted
+                    processing_folder = os.path.join(class_folder, f"grade processing {cleaned_assignment}")
+            
             if not os.path.exists(processing_folder):
-                raise Exception(f"Processing folder not found for assignment: {assignment_name}")
+                # Try to find the folder by searching for folders that contain the assignment name
+                # This helps if the assignment name format is slightly different
+                pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
+                matching_folders = []
+                for folder_name in os.listdir(class_folder):
+                    folder_path = os.path.join(class_folder, folder_name)
+                    if os.path.isdir(folder_path):
+                        match = pattern.match(folder_name)
+                        if match:
+                            folder_assignment = match.group(1)
+                            # Check if the cleaned assignment name is in the folder name
+                            if cleaned_assignment.lower() in folder_assignment.lower() or folder_assignment.lower() in cleaned_assignment.lower():
+                                matching_folders.append(folder_path)
+                
+                if matching_folders:
+                    # Use the first matching folder
+                    processing_folder = matching_folders[0]
+                    logs.append(f"⚠️  Found matching folder: {os.path.basename(processing_folder)}")
+                else:
+                    raise Exception(f"Processing folder not found for assignment: {assignment_name}\n   Tried: {os.path.basename(processing_folder)}")
         else:
             raise Exception("Assignment name required for clear operation")
         

@@ -177,9 +177,49 @@ function findPdfsFolder(drive, className) {
   
   // Use proper path joining for Windows
   const separator = result.classFolder.includes(':\\') ? '\\' : path.sep;
-  const pdfsFolder = `${result.classFolder}${separator}grade processing${separator}PDFs`;
-  const processingFolder = `${result.classFolder}${separator}grade processing`;
   const importFilePath = `${result.classFolder}${separator}Import File.csv`;
+  
+  // Find the most recent "grade processing [CLASS_CODE] [ASSIGNMENT]" folder
+  // Pattern matches both: "grade processing [CLASS_CODE] [ASSIGNMENT]" and "grade processing [ASSIGNMENT]"
+  let pdfsFolder = null;
+  let processingFolder = null;
+  
+  try {
+    if (fs.existsSync(result.classFolder)) {
+      const folders = fs.readdirSync(result.classFolder);
+      const processingFolders = [];
+      
+      for (const folderName of folders) {
+        const folderPath = path.join(result.classFolder, folderName);
+        if (fs.statSync(folderPath).isDirectory()) {
+          // Match "grade processing" followed by anything
+          if (/^grade processing .+$/i.test(folderName)) {
+            processingFolders.push({
+              name: folderName,
+              path: folderPath,
+              mtime: fs.statSync(folderPath).mtime.getTime()
+            });
+          }
+        }
+      }
+      
+      if (processingFolders.length > 0) {
+        // Sort by modification time (newest first) and use the most recent
+        processingFolders.sort((a, b) => b.mtime - a.mtime);
+        processingFolder = processingFolders[0].path;
+        pdfsFolder = path.join(processingFolder, 'PDFs');
+      }
+    }
+  } catch (error) {
+    // If we can't read the folder, fall back to old naming convention
+    console.error('Error finding processing folder:', error);
+  }
+  
+  // Fallback to old naming convention if no processing folders found
+  if (!processingFolder) {
+    processingFolder = `${result.classFolder}${separator}grade processing`;
+    pdfsFolder = `${processingFolder}${separator}PDFs`;
+  }
   
   // Return the path even if folder doesn't exist yet (for file dialogs)
   return {
@@ -235,6 +275,20 @@ function parseZipFilesFromOutput(output, downloadsPath) {
   return { found: false };
 }
 
+// Helper to extract user logs from result
+function getUserLogs(result) {
+  if (result.userLogs && result.userLogs.length > 0) {
+    return result.userLogs;
+  }
+  // Legacy: parse output and filter out [DEV] lines
+  return result.output.split('\n')
+    .filter(l => l.trim() && !l.trim().startsWith('[DEV]'))
+    .map(l => {
+      const trimmed = l.trim();
+      return trimmed.startsWith('[USER]') ? trimmed.substring(7) : trimmed;
+    });
+}
+
 // Helper to run Python scripts
 async function runPythonScript(scriptName, args = []) {
   const pythonPath = await findPython();
@@ -269,9 +323,21 @@ async function runPythonScript(scriptName, args = []) {
 
     proc.stdout.on('data', (data) => {
       stdout += data.toString();
-      // Log each line as it comes
+      // Parse [USER] and [DEV] prefixes and route accordingly
       data.toString().split('\n').filter(l => l.trim()).forEach(line => {
-        writeLog(`[Python] ${line}`);
+        const trimmed = line.trim();
+        if (trimmed.startsWith('[USER]')) {
+          // User-facing log - strip prefix and log normally
+          const userMessage = trimmed.substring(7); // Remove '[USER]' prefix
+          writeLog(`[Python] ${userMessage}`);
+        } else if (trimmed.startsWith('[DEV]')) {
+          // Developer log - only log in debug mode
+          const devMessage = trimmed.substring(6); // Remove '[DEV]' prefix
+          writeLog(`[Python Debug] ${devMessage}`);
+        } else {
+          // Legacy format (no prefix) - treat as user log for backward compatibility
+          writeLog(`[Python] ${trimmed}`);
+        }
       });
     });
 
@@ -297,12 +363,31 @@ async function runPythonScript(scriptName, args = []) {
         // If JSON parsing fails, that's okay - we'll just use stdout
       }
       
+      // Parse stdout to separate user and developer logs
+      const userLogs = [];
+      const devLogs = [];
+      const lines = stdout.split('\n').filter(l => l.trim());
+      
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('[USER]')) {
+          userLogs.push(trimmed.substring(7)); // Remove '[USER]' prefix
+        } else if (trimmed.startsWith('[DEV]')) {
+          devLogs.push(trimmed.substring(6)); // Remove '[DEV]' prefix
+        } else {
+          // Legacy format - treat as user log for backward compatibility
+          userLogs.push(trimmed);
+        }
+      });
+      
       resolve({
         success: code === 0,
         output: stdout,
         error: stderr,
         code,
-        data: jsonData  // Include parsed JSON data if available
+        data: jsonData,  // Include parsed JSON data if available
+        userLogs,        // User-facing logs
+        devLogs          // Developer-only logs
       });
     });
 
@@ -347,7 +432,12 @@ app.post('/api/quiz/list-classes', async (req, res) => {
       });
     }
     
-    apiResponse(res, { success: result.success, classes, logs: result.output.split('\n').filter(l => l.trim()) });
+    // Use separated user logs if available
+    const logs = result.userLogs && result.userLogs.length > 0 
+      ? result.userLogs 
+      : result.output.split('\n').filter(l => l.trim() && !l.trim().startsWith('[DEV]'))
+          .map(l => l.trim().startsWith('[USER]') ? l.trim().substring(7) : l.trim());
+    apiResponse(res, { success: result.success, classes, logs });
   } catch (error) {
     apiResponse(res, { success: false, error: error.message });
   }
@@ -376,7 +466,7 @@ app.post('/api/quiz/process', async (req, res) => {
     
     apiResponse(res, {
       success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
+      logs: getUserLogs(result),
       combined_pdf_path: result.data?.combined_pdf_path,
       assignment_name: result.data?.assignment_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
@@ -398,7 +488,7 @@ app.post('/api/quiz/process-selected', async (req, res) => {
     
     apiResponse(res, {
       success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
+      logs: getUserLogs(result),
       combined_pdf_path: result.data?.combined_pdf_path,
       assignment_name: result.data?.assignment_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
@@ -434,7 +524,7 @@ app.post('/api/quiz/process-completion', async (req, res) => {
     
     apiResponse(res, {
       success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
+      logs: getUserLogs(result),
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
@@ -457,7 +547,7 @@ app.post('/api/quiz/process-completion-selected', async (req, res) => {
     
     apiResponse(res, {
       success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
+      logs: getUserLogs(result),
       combined_pdf_path: result.data?.combined_pdf_path,
       assignment_name: result.data?.assignment_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
@@ -499,16 +589,29 @@ app.post('/api/quiz/extract-grades', async (req, res) => {
           logs = jsonData.logs || [];
           error = jsonData.error || null;
         } else {
-          // Not JSON, treat as plain text logs
-          logs = result.output.split('\n').filter(l => l.trim());
+          // Use separated user logs if available, otherwise fall back to parsing output
+          if (result.userLogs && result.userLogs.length > 0) {
+            logs = result.userLogs;
+          } else {
+            // Legacy: parse output and filter out [DEV] lines
+            logs = result.output.split('\n')
+              .filter(l => l.trim() && !l.trim().startsWith('[DEV]'))
+              .map(l => l.trim().startsWith('[USER]') ? l.trim().substring(7) : l.trim());
+          }
           if (!result.success) {
             error = result.error || 'Extraction failed';
           }
         }
       }
     } catch (parseError) {
-      // If JSON parsing fails, fall back to plain text
-      logs = result.output.split('\n').filter(l => l.trim());
+      // If JSON parsing fails, use separated user logs or fall back to plain text
+      if (result.userLogs && result.userLogs.length > 0) {
+        logs = result.userLogs;
+      } else {
+        logs = result.output.split('\n')
+          .filter(l => l.trim() && !l.trim().startsWith('[DEV]'))
+          .map(l => l.trim().startsWith('[USER]') ? l.trim().substring(7) : l.trim());
+      }
       if (!result.success) {
         error = result.error || 'Extraction failed';
       }
@@ -579,7 +682,7 @@ app.post('/api/quiz/split-pdf-upload', (req, res, next) => {
     
     apiResponse(res, {
       success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
+      logs: getUserLogs(result),
       assignmentName: finalAssignmentName,
       ...(result.success ? {} : { error: result.error || 'Split failed' })
     });
@@ -628,7 +731,7 @@ app.post('/api/quiz/split-pdf', async (req, res) => {
     
     apiResponse(res, {
       success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
+      logs: getUserLogs(result),
       ...(result.success ? {} : { error: result.error || 'Split failed' })
     });
   } catch (error) {
@@ -668,7 +771,8 @@ app.post('/api/quiz/get-pdfs-folder', async (req, res) => {
       apiResponse(res, { 
         success: true, 
         path: pdfsFolder,  // Target path for logging
-        existingPath: existingPath  // Existing parent for file dialog
+        existingPath: existingPath,  // Existing parent for file dialog
+        classFolder: pdfsFolderResult.classFolder  // Class roster folder path
       });
     } else {
       // Try to construct path even if class folder not found
@@ -683,15 +787,53 @@ app.post('/api/quiz/get-pdfs-folder', async (req, res) => {
           }
         }
         
-        // Construct the target path
-        const rostersPath = possiblePaths[0];
-        const separator = rostersPath.includes(':\\') ? '\\' : path.sep;
-        const constructedPath = `${rostersPath}${separator}${className}${separator}grade processing${separator}PDFs`;
+        // Try to find the most recent grade processing folder
+        const separator = existingRostersPath.includes(':\\') ? '\\' : path.sep;
+        const classFolderPath = path.join(existingRostersPath, className);
+        let constructedPath = null;
+        let existingPath = existingRostersPath;
+        
+        try {
+          if (fs.existsSync(classFolderPath)) {
+            const folders = fs.readdirSync(classFolderPath);
+            const processingFolders = [];
+            
+            for (const folderName of folders) {
+              const folderPath = path.join(classFolderPath, folderName);
+              if (fs.statSync(folderPath).isDirectory()) {
+                // Match "grade processing" followed by anything
+                if (/^grade processing .+$/i.test(folderName)) {
+                  processingFolders.push({
+                    name: folderName,
+                    path: folderPath,
+                    mtime: fs.statSync(folderPath).mtime.getTime()
+                  });
+                }
+              }
+            }
+            
+            if (processingFolders.length > 0) {
+              // Sort by modification time (newest first) and use the most recent
+              processingFolders.sort((a, b) => b.mtime - a.mtime);
+              const mostRecentFolder = processingFolders[0].path;
+              constructedPath = path.join(mostRecentFolder, 'PDFs');
+              existingPath = mostRecentFolder; // Use the processing folder as existing path
+            }
+          }
+        } catch (error) {
+          console.error('Error finding processing folder:', error);
+        }
+        
+        // Fallback to old naming convention if no processing folders found
+        if (!constructedPath) {
+          constructedPath = `${existingRostersPath}${separator}${className}${separator}grade processing${separator}PDFs`;
+          existingPath = existingRostersPath;
+        }
         
         apiResponse(res, { 
           success: true, 
           path: constructedPath,
-          existingPath: existingRostersPath  // Use existing rosters path
+          existingPath: existingPath
         });
       } else {
         apiResponse(res, { success: false, error: 'Could not determine rosters path' });
@@ -704,7 +846,7 @@ app.post('/api/quiz/get-pdfs-folder', async (req, res) => {
 
 app.post('/api/quiz/open-folder', async (req, res) => {
   try {
-    const { drive, className } = req.body;
+    const { drive, className, classFolderOnly } = req.body;
     
     // Handle DOWNLOADS special case
     if (className === 'DOWNLOADS') {
@@ -718,6 +860,19 @@ app.post('/api/quiz/open-folder', async (req, res) => {
     
     if (!validateClassName(className)) {
       return apiResponse(res, { success: false, error: 'Invalid class name' });
+    }
+    
+    // If classFolderOnly is true, open the class roster folder directly
+    if (classFolderOnly) {
+      const result = findClassFolder(drive || 'C', className);
+      if (result && result.classFolder) {
+        const { exec } = require('child_process');
+        exec(`explorer "${result.classFolder}"`);
+        apiResponse(res, { success: true, message: 'Class roster folder opened', logs: [`📂 Opened class roster folder: ${result.classFolder}`] });
+        return;
+      } else {
+        return apiResponse(res, { success: false, error: `Class folder not found: ${className}` });
+      }
     }
     
     const result = await runPythonScript('helper_cli.py', ['open-folder', drive || 'C', className]);
@@ -770,7 +925,7 @@ app.post('/api/quiz/clear-data', async (req, res) => {
     
     apiResponse(res, {
       success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
+      logs: getUserLogs(result),
       ...(result.success ? {} : { error: result.error || 'Clear failed' })
     });
   } catch (error) {
@@ -822,7 +977,7 @@ app.post('/api/quiz/clear-archived-data', async (req, res) => {
     
     apiResponse(res, {
       success: result.success,
-      logs: result.output.split('\n').filter(l => l.trim()),
+      logs: getUserLogs(result),
       ...(result.success ? {} : { error: result.error || 'Clear archived failed' })
     });
   } catch (error) {

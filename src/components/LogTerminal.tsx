@@ -34,22 +34,23 @@ export default function LogTerminal({
   }, [logs, expandedLogging]);
 
   // Filter logs for regular logging mode
+  // Since server.js now separates [USER] and [DEV] logs, we only receive user logs
+  // So we just need minimal filtering for edge cases
   const shouldShowLog = (log: string, index: number, allLogs: string[]): boolean => {
     if (expandedLogging) return true;
     
-    const logLower = log.toLowerCase();
     const logTrimmed = log.trim();
     
     // Hide empty lines
     if (!logTrimmed) return false;
     
-    // Hide JSON formatted output
-    if (logTrimmed.startsWith('{') || logTrimmed.includes('"success":') || logTrimmed.includes('"error":')) {
+    // Hide JSON formatted output (shouldn't happen, but just in case)
+    if (logTrimmed.startsWith('{') && logTrimmed.includes('"success"')) {
       return false;
     }
     
-    // Hide box-formatted output (fancy error boxes)
-    if (/[║╔╚═╗╝]/.test(logTrimmed)) {
+    // Hide technical prefixes that might slip through (legacy format)
+    if (logTrimmed.startsWith('[Python]') || logTrimmed.startsWith('[Python Error]')) {
       return false;
     }
     
@@ -58,57 +59,8 @@ export default function LogTerminal({
       return false;
     }
     
-    // Hide technical/verbose messages
-    if (logLower.includes('📡 sending') ||
-        logLower.startsWith('drive:') ||
-        logLower.startsWith('class:') ||
-        logLower.startsWith('processing folder:') ||
-        logLower.startsWith('full path:') ||
-        logLower.startsWith('running:') ||
-        logLower.includes('[python]') ||
-        logLower.includes('[python error]')) {
-      return false;
-    }
-    
-    // Hide duplicate error messages (keep only the first clean one with ❌)
-    if (logLower.startsWith('error:') || logLower.startsWith('processing failed:')) {
-      return false;
-    }
-    
-    // Hide header banners
-    if (logLower.includes('quiz processing started') ||
-        logLower.includes('starting quiz processing') ||
-        logLower.includes('completion processing started')) {
-      return false;
-    }
-    
-    // Show emoji messages (but not duplicates)
-    if (/^[🔬📦✅❌⚠️📡🔍📁📄📊📝📂🗑️🧹📋]/.test(logTrimmed)) {
-      return true;
-    }
-    
-    // Show important status messages
-    if (logLower.includes('extracted') ||
-        logLower.includes('created') ||
-        logLower.includes('updated') ||
-        logLower.includes('loaded') ||
-        logLower.includes('assignment:') ||
-        logLower.includes('backup') ||
-        logLower.includes('processed') ||
-        logLower.includes('confidence') ||
-        logLower.includes('please review') ||
-        logLower.includes('issues found') ||
-        logLower.includes('download') ||
-        logLower.includes('missing')) {
-      return true;
-    }
-    
-    // Show grade extraction lines (numbered student grades)
-    if (/^\s*\d+\./.test(logTrimmed)) {
-      return true;
-    }
-    
-    return false;
+    // Show everything else (server already filtered out [DEV] logs)
+    return true;
   };
 
   // Filter and deduplicate logs
@@ -268,7 +220,8 @@ export default function LogTerminal({
             
             // Check for completion messages - show import file link
             if (log.includes('Completion processing completed!') || 
-                log.includes('Grade extraction complete!')) {
+                log.includes('Grade extraction complete!') ||
+                log.includes('Grade extraction completed successfully!')) {
               return (
                 <div key={index} className={isError ? 'text-red-500' : ''}>
                   <div>{log}</div>

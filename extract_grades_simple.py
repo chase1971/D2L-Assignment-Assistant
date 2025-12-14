@@ -1,17 +1,34 @@
 """Simplified grade extraction - uses modular components."""
-import pandas as pd
-import tempfile
+
+# Standard library
+import datetime
 import os
 import platform
+import re
 import subprocess
-import datetime
+import tempfile
+
+# Third-party
+import numpy as np
+import pandas as pd
 from pdf2image import convert_from_path
 from pypdf import PdfReader, PdfWriter
-import numpy as np
 
-# Import our modules
-from ocr_utils import extract_text_google_vision, isolate_red_text, TESSERACT_AVAILABLE, GOOGLE_VISION_API_KEY
-from grade_parser import extract_grade_from_text, extract_name_from_watermark, GRADE_SEARCH_TOP, GRADE_SEARCH_BOTTOM, GRADE_SEARCH_LEFT, GRADE_SEARCH_RIGHT
+# Local
+from grade_parser import (
+    extract_grade_from_text, 
+    extract_name_from_watermark, 
+    GRADE_SEARCH_TOP, 
+    GRADE_SEARCH_BOTTOM, 
+    GRADE_SEARCH_LEFT, 
+    GRADE_SEARCH_RIGHT
+)
+from ocr_utils import (
+    extract_text_google_vision, 
+    isolate_red_text, 
+    TESSERACT_AVAILABLE, 
+    GOOGLE_VISION_API_KEY
+)
 
 if TESSERACT_AVAILABLE:
     import pytesseract
@@ -32,7 +49,7 @@ def create_first_pages_pdf(pdf_path, log):
                 if "(1 of" in page_text:
                     first_pages.append(i)
                     writer.add_page(reader.pages[i])
-            except:
+            except Exception:
                 continue
         
         if not first_pages:
@@ -53,8 +70,16 @@ def create_first_pages_pdf(pdf_path, log):
         return None
 
 
-def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=None):
-    """Extract student names and grades from PDF."""
+def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=None, roster_names=None):
+    """
+    Extract student names and grades from PDF.
+    
+    Args:
+        pdf_path: Path to the combined PDF file
+        log: Logging callback function
+        debug_images_folder: Optional folder to save debug images
+        roster_names: Optional list of student names from Import File for fuzzy matching
+    """
     log(f"📄 Reading PDF: {os.path.basename(pdf_path)}")
     
     # Create grades-only PDF
@@ -104,7 +129,7 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
     # Get PDF reader for watermark extraction
     try:
         pdf_reader = PdfReader(pdf_to_scan)
-    except:
+    except Exception:
         pdf_reader = None
     
     for i, img in enumerate(pages):
@@ -188,7 +213,7 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
                 safe_name = re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_')
                 grade_img.save(os.path.join(debug_images_folder, f"{safe_name}_crop.png"))
                 grade_img_processed.save(os.path.join(debug_images_folder, f"{safe_name}_red_only.png"))
-            except:
+            except Exception:
                 pass
         
         # OCR
@@ -199,7 +224,7 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
                 custom_config = r'--psm 6 --oem 3 -c tessedit_char_whitelist=0123456789./'
                 grade_text = pytesseract.image_to_string(grade_img_processed, config=custom_config).strip()
                 confidence = 0.5  # Tesseract doesn't provide confidence, assume medium
-            except:
+            except Exception:
                 grade_text = None
                 confidence = 0.0
         
@@ -230,8 +255,41 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
                     name = None
         
         if not name:
-            name = f"Unknown Student (Page {i+1})"
-            log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
+            # Try fuzzy matching the watermark text against the roster before giving up
+            if roster_names and text_top:
+                try:
+                    from name_matching import find_best_name_match
+                    # Try to extract any name-like text from the watermark
+                    # Remove the "(X of Y)" pattern and clean up
+                    cleaned_watermark = re.sub(r'\(\s*\d+\s+of\s+\d+\s*\)', '', text_top).strip()
+                    cleaned_watermark = re.sub(r'[^A-Za-z\s]', ' ', cleaned_watermark).strip()
+                    cleaned_watermark = re.sub(r'\s+', ' ', cleaned_watermark)
+                    
+                    if cleaned_watermark and len(cleaned_watermark) > 3:
+                        best_match = find_best_name_match(cleaned_watermark, roster_names, threshold=0.5)
+                        if best_match:
+                            matched_name, similarity = best_match
+                            name = matched_name
+                            log(f"   🔍 Fuzzy matched watermark text '{cleaned_watermark}' → '{name}' (similarity: {similarity:.2f})")
+                        else:
+                            name = f"Unknown Student (Page {i+1})"
+                            log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
+                            log(f"   🔍  Watermark text: '{text_top}'")
+                    else:
+                        name = f"Unknown Student (Page {i+1})"
+                        log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
+                        log(f"   🔍  Watermark text: '{text_top}'")
+                except Exception as e:
+                    # If fuzzy matching fails, fall back to Unknown Student
+                    name = f"Unknown Student (Page {i+1})"
+                    log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
+                    log(f"   🔍  Watermark text: '{text_top}'")
+                    log(f"   ⚠️  Fuzzy matching error: {str(e)}")
+            else:
+                name = f"Unknown Student (Page {i+1})"
+                log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
+                if text_top:
+                    log(f"   🔍  Watermark text: '{text_top}'")
         
         log(f"   ✅ Name: {name}")
         log(f"   📊 Grade: {grade} (confidence: {confidence:.2f})")
