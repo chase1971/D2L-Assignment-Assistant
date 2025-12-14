@@ -1,0 +1,411 @@
+#!/usr/bin/env python3
+"""
+CLI script for clearing assignment data with selective preservation
+Usage: python clear_data_cli.py <drive> <className> [assignmentName] [--save-folders-and-pdf] [--list]
+"""
+
+import sys
+import os
+import json
+import shutil
+import time
+import stat
+import re
+import subprocess
+from glob import glob
+from config_reader import get_rosters_path
+from typing import List, Dict, Tuple
+
+
+def force_remove_readonly(func, path, exc):
+    """Remove read-only files and directories"""
+    if os.path.exists(path):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+
+def close_explorer_windows_for_path(folder_path: str):
+    """Force close any Windows Explorer windows showing the specified path"""
+    if sys.platform != 'win32':
+        return
+    
+    try:
+        # Use PowerShell to close Explorer windows showing this path
+        normalized_path = os.path.normpath(folder_path).lower()
+        ps_script = f'''
+        $shell = New-Object -ComObject Shell.Application
+        $shell.Windows() | Where-Object {{ $_.LocationURL -like "*{normalized_path.replace(chr(92), '/')}*" }} | ForEach-Object {{ $_.Quit() }}
+        '''
+        subprocess.run(['powershell', '-Command', ps_script], 
+                      capture_output=True, 
+                      timeout=5,
+                      creationflags=subprocess.CREATE_NO_WINDOW)
+    except Exception:
+        pass  # Silently fail if we can't close windows
+
+
+def safe_remove_file(file_path: str, max_retries: int = 3) -> bool:
+    """Safely remove a file with retry logic"""
+    for attempt in range(max_retries):
+        try:
+            if os.path.exists(file_path):
+                os.chmod(file_path, stat.S_IWRITE)
+                os.remove(file_path)
+                return True
+        except Exception:
+            if attempt < max_retries - 1:
+                time.sleep(0.5)
+                continue
+            return False
+    return False
+
+
+def safe_remove_tree(folder_path: str, max_retries: int = 3) -> bool:
+    """Safely remove a directory tree with retry logic"""
+    for attempt in range(max_retries):
+        try:
+            if os.path.exists(folder_path):
+                shutil.rmtree(folder_path, onerror=force_remove_readonly)
+                return True
+        except Exception:
+            if attempt < max_retries - 1:
+                time.sleep(0.5)
+                continue
+            return False
+    return False
+
+
+def get_folder_size(folder_path: str) -> int:
+    """Get total size of folder in bytes"""
+    total_size = 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            for filename in filenames:
+                filepath = os.path.join(dirpath, filename)
+                if os.path.exists(filepath):
+                    total_size += os.path.getsize(filepath)
+    except Exception:
+        pass
+    return total_size
+
+
+def format_size(size_bytes: int) -> str:
+    """Format size in human-readable format"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} TB"
+
+
+def list_processing_folders(class_folder_path: str) -> List[Dict[str, str]]:
+    """
+    List all 'grade processing [Assignment]' and 'archived [Assignment]' folders in the class folder.
+    
+    Returns:
+        List of dicts with keys: name, path, size, modified
+    """
+    if not os.path.exists(class_folder_path):
+        return []
+    
+    folders = []
+    processing_pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
+    archived_pattern = re.compile(r'^archived (.+)$', re.IGNORECASE)
+    
+    for folder_name in os.listdir(class_folder_path):
+        folder_path = os.path.join(class_folder_path, folder_name)
+        if not os.path.isdir(folder_path):
+            continue
+        
+        # Check for both patterns
+        processing_match = processing_pattern.match(folder_name)
+        archived_match = archived_pattern.match(folder_name)
+        
+        if processing_match or archived_match:
+            size = get_folder_size(folder_path)
+            modified = os.path.getmtime(folder_path)
+            
+            folders.append({
+                'name': folder_name,  # Use full folder name including "grade processing" or "archived"
+                'path': folder_path,
+                'size': format_size(size),
+                'modified': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(modified))
+            })
+    
+    # Sort by modification time (newest first)
+    folders.sort(key=lambda x: x['modified'], reverse=True)
+    
+    return folders
+
+
+def clear_all_archived_data(class_folder_path: str) -> Tuple[int, List[str]]:
+    """
+    Clear all 'archived [Assignment]' folders in the class folder.
+    
+    Returns:
+        Tuple of (deleted_count, logs)
+    """
+    if not os.path.exists(class_folder_path):
+        return 0, ["Class folder not found"]
+    
+    logs = []
+    deleted_count = 0
+    pattern = re.compile(r'^archived (.+)$', re.IGNORECASE)
+    
+    for folder_name in os.listdir(class_folder_path):
+        folder_path = os.path.join(class_folder_path, folder_name)
+        if not os.path.isdir(folder_path):
+            continue
+        
+        match = pattern.match(folder_name)
+        if match:
+            # Force close any explorer windows showing this folder
+            close_explorer_windows_for_path(folder_path)
+            time.sleep(0.5)  # Give Windows time to close the window
+            
+            if safe_remove_tree(folder_path):
+                deleted_count += 1
+                logs.append(f"✅ Deleted: {folder_name}")
+            else:
+                logs.append(f"❌ Failed to delete: {folder_name}")
+    
+    return deleted_count, logs
+
+
+def clear_assignment_data(folder_path: str, save_mode: bool = False) -> Tuple[bool, str]:
+    """
+    Clear data with optional selective preservation.
+    
+    Args:
+        folder_path: Path to 'grade processing [Assignment]' folder
+        save_mode: If True, keep unzipped folders and combined PDF, rename to 'archived'
+    
+    Returns:
+        Tuple of (success, message)
+    """
+    if not os.path.exists(folder_path):
+        return False, "Folder not found"
+    
+    folder_name = os.path.basename(folder_path)
+    parent_folder = os.path.dirname(folder_path)
+    
+    if save_mode:
+        # Selective clear: Keep unzipped folders and combined PDF
+        pdfs_folder = os.path.join(folder_path, "PDFs")
+        unreadable_folder = os.path.join(folder_path, "unreadable")
+        
+        # Find and keep only the combined PDF
+        combined_pdf = None
+        if os.path.exists(pdfs_folder):
+            for file in os.listdir(pdfs_folder):
+                if file.endswith('.pdf') and 'combined PDF' in file:
+                    combined_pdf = os.path.join(pdfs_folder, file)
+                    break
+            
+            # Delete individual PDFs
+            for file in os.listdir(pdfs_folder):
+                file_path = os.path.join(pdfs_folder, file)
+                if file_path != combined_pdf:
+                    safe_remove_file(file_path)
+        
+        # Delete unreadable folder
+        if os.path.exists(unreadable_folder):
+            safe_remove_tree(unreadable_folder)
+        
+        # Rename folder to 'archived [Assignment]'
+        match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
+        if match:
+            assignment_name = match.group(1)
+            new_folder_name = f"archived {assignment_name}"
+            new_folder_path = os.path.join(parent_folder, new_folder_name)
+            
+            # If archived folder already exists, remove it first
+            if os.path.exists(new_folder_path):
+                safe_remove_tree(new_folder_path)
+            
+            try:
+                os.rename(folder_path, new_folder_path)
+                return True, f"Archived to: {new_folder_name}"
+            except Exception as e:
+                return False, f"Failed to rename: {str(e)}"
+        
+        return True, "Selective clear completed"
+    else:
+        # Full clear: Delete entire folder
+        if safe_remove_tree(folder_path):
+            return True, f"Deleted: {folder_name}"
+        else:
+            return False, "Failed to delete folder (may be in use)"
+
+
+def main():
+    # Check for --list flag
+    if "--list" in sys.argv:
+        if len(sys.argv) < 3:
+            print(json.dumps({
+                "success": False,
+                "error": "Usage: python clear_data_cli.py <drive> <className> --list"
+            }))
+            sys.exit(1)
+        
+        drive = sys.argv[1]
+        class_name = sys.argv[2]
+        
+        try:
+            rosters_path = get_rosters_path()
+            
+            # Find class folder
+            class_folder = None
+            if os.path.exists(rosters_path):
+                for folder in os.listdir(rosters_path):
+                    if class_name in folder:
+                        class_folder = os.path.join(rosters_path, folder)
+                        break
+            
+            if not class_folder:
+                print(json.dumps({
+                    "success": False,
+                    "error": f"Class folder not found: {class_name}"
+                }))
+                sys.exit(1)
+            
+            # List processing folders
+            folders = list_processing_folders(class_folder)
+            
+            print(json.dumps({
+                "success": True,
+                "folders": folders
+            }))
+            sys.exit(0)
+            
+        except Exception as e:
+            print(json.dumps({
+                "success": False,
+                "error": str(e)
+            }))
+            sys.exit(1)
+    
+    # Check for --clear-archived flag
+    if "--clear-archived" in sys.argv:
+        if len(sys.argv) < 3:
+            print(json.dumps({
+                "success": False,
+                "error": "Usage: python clear_data_cli.py <drive> <className> --clear-archived"
+            }))
+            sys.exit(1)
+        
+        drive = sys.argv[1]
+        class_name = sys.argv[2]
+        
+        try:
+            logs = []
+            logs.append(f"🗑️ Clearing all archived data for {class_name}")
+            
+            rosters_path = get_rosters_path()
+            
+            # Find class folder
+            class_folder = None
+            if os.path.exists(rosters_path):
+                for folder in os.listdir(rosters_path):
+                    if class_name in folder:
+                        class_folder = os.path.join(rosters_path, folder)
+                        break
+            
+            if not class_folder:
+                raise Exception(f"Class folder not found: {class_name}")
+            
+            # Clear all archived folders
+            deleted_count, archive_logs = clear_all_archived_data(class_folder)
+            logs.extend(archive_logs)
+            
+            if deleted_count > 0:
+                logs.append(f"✅ Cleared {deleted_count} archived folder(s)")
+            else:
+                logs.append("ℹ️ No archived folders found")
+            
+            # Output logs
+            for log in logs:
+                print(log)
+            
+            sys.exit(0)
+            
+        except Exception as e:
+            error_str = str(e).lower()
+            if "being used by another process" in error_str or "locked" in error_str:
+                print("❌ The file is being used by another process")
+            elif "permission denied" in error_str:
+                print("❌ Cannot access file - permission denied")
+            else:
+                print(f"❌ {str(e)}")
+            sys.exit(1)
+    
+    # Normal clear operation
+    if len(sys.argv) < 3:
+        print(json.dumps({
+            "success": False,
+            "error": "Usage: python clear_data_cli.py <drive> <className> [assignmentName] [--save-folders-and-pdf]"
+        }))
+        sys.exit(1)
+    
+    drive = sys.argv[1]
+    class_name = sys.argv[2]
+    assignment_name = sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith('--') else None
+    save_mode = "--save-folders-and-pdf" in sys.argv
+    
+    try:
+        logs = []
+        logs.append(f"🗑️ Starting cleanup for {class_name}")
+        
+        rosters_path = get_rosters_path()
+        
+        # Find class folder
+        class_folder = None
+        if os.path.exists(rosters_path):
+            for folder in os.listdir(rosters_path):
+                if class_name in folder:
+                    class_folder = os.path.join(rosters_path, folder)
+                    break
+        
+        if not class_folder:
+            raise Exception(f"Class folder not found: {class_name}")
+        
+        # Find the target processing folder
+        if assignment_name:
+            processing_folder = os.path.join(class_folder, f"grade processing {assignment_name}")
+            if not os.path.exists(processing_folder):
+                raise Exception(f"Processing folder not found for assignment: {assignment_name}")
+        else:
+            raise Exception("Assignment name required for clear operation")
+        
+        # Clear the data
+        logs.append(f"Target folder: {os.path.basename(processing_folder)}")
+        logs.append(f"Mode: {'Selective (save folders and PDF)' if save_mode else 'Full delete'}")
+        
+        success, message = clear_assignment_data(processing_folder, save_mode)
+        
+        if success:
+            logs.append(f"✅ {message}")
+            logs.append("✅ Cleanup completed!")
+        else:
+            logs.append(f"❌ {message}")
+        
+        # Output logs
+        for log in logs:
+            print(log)
+        
+        if not success:
+            sys.exit(1)
+        
+    except Exception as e:
+        error_str = str(e).lower()
+        if "being used by another process" in error_str or "locked" in error_str:
+            print("❌ The file is being used by another process")
+        elif "permission denied" in error_str:
+            print("❌ Cannot access file - permission denied")
+        else:
+            print(f"❌ {str(e)}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
