@@ -391,6 +391,7 @@ def _process_single_pdf(
         reader = PdfReader(src_pdf)
         result["page_count"] = len(reader.pages)
     except Exception as e:
+        log("DEV_ERROR_PDF_PAGE_COUNT", name=name, error=str(e))
         result["errors"].append(f"{name}: Error reading PDF page count: {e}")
     
     if is_completion_process:
@@ -428,6 +429,7 @@ def _process_multiple_pdfs(
                 for page in reader.pages:
                     combined_writer.add_page(page)
             except Exception as e:
+                log("DEV_ERROR_READ_MULTI_PDF", name=name, file=pdf_file, error=str(e))
                 result["errors"].append(f"{name}: Error reading {pdf_file}: {e}")
         
         result["page_count"] = total_pages
@@ -436,6 +438,7 @@ def _process_multiple_pdfs(
             combined_writer.write(f)
             
     except Exception as e:
+        log("DEV_ERROR_COMBINE_PDFS", name=name, error=str(e))
         result["errors"].append(f"{name}: Error combining PDFs: {e}")
         # Fallback: use first PDF
         try:
@@ -443,6 +446,7 @@ def _process_multiple_pdfs(
             reader = PdfReader(os.path.join(folder_path, pdfs[0]))
             result["page_count"] = len(reader.pages)
         except Exception as e2:
+            log("DEV_ERROR_FALLBACK_PDF", name=name, error=str(e2))
             result["errors"].append(f"{name}: Error with fallback PDF: {e2}")
     
     return result

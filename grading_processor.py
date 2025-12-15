@@ -752,7 +752,7 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
         try:
             open_file_with_default_app(combined_pdf_path)
         except Exception as e:
-            pass  # Silently fail if can't open PDF
+            log("DEV_ERROR_OPEN_PDF", error=str(e))
         
         # Store results
         result.submitted = [name_map[pdf] for pdf in pdf_paths]

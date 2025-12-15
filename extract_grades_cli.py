@@ -573,8 +573,8 @@ def main() -> None:
         
         def log_callback(message):
             # Route messages to our logging system
-            # Skip debug messages entirely, log others as INFO
-            if message and "🔍 DEBUG:" not in message:
+            # Debug filtering is now handled centrally in logger.py via D2L_DEBUG flag
+            if message:
                 log_raw(message)
             
             # Collect all log messages for tracking
@@ -649,6 +649,7 @@ def main() -> None:
             if first_pages_pdf and os.path.exists(first_pages_pdf):
                 open_file_with_default_app(first_pages_pdf)
         except Exception as e:
+            log("DEV_ERROR_OPEN_EXTRACTED_FILES", error=str(e))
             extraction_errors.append(f"⚠️ Could not open files: {str(e)}")
         
         # Format and display results

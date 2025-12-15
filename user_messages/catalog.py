@@ -4,9 +4,19 @@ All user-facing messages in one place.
 To change any message, edit it HERE.
 
 Format: "MESSAGE_ID": ("template", "level", "code")
+
 Levels: SUCCESS, ERROR, WARNING, INFO
-Codes: E1xxx (user errors), W1xxx (user warnings), I1xxx (user info), S1xxx (user success)
-       D2xxx (dev errors), D3xxx (dev warnings)
+
+Error Code Numbering Scheme:
+  E1xxx - User-facing errors (E1001-E1999)
+  W1xxx - User-facing warnings (W1001-W1999)
+  I1xxx - User-facing info messages (I1001-I1999)
+  S1xxx - User-facing success messages (S1001-S1999)
+  D2xxx - Developer errors (D2001-D2999) - not shown to users
+  D3xxx - Developer warnings (D3001-D3999) - not shown to users
+
+Codes are displayed at the end of messages: "Message text [E1001]"
+Codes are unique identifiers for debugging and support.
 """
 
 MESSAGES = {

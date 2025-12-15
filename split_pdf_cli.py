@@ -199,7 +199,7 @@ def generate_index_html(student_folders, processing_folder, original_index_path=
                 pass
         except Exception as e:
             # If we can't parse the original, fall through to generate new one
-            pass
+            log("DEV_ERROR_PARSE_INDEX", error=str(e))
     
     # Generate new index.html if original not available or parsing failed
     # Use format that more closely matches D2L's typical structure
