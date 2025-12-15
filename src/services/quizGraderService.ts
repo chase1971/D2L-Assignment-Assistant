@@ -4,10 +4,17 @@
 // Use environment variable if available, otherwise fall back to localhost
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// Log entry from backend (new format with level info)
+export interface LogEntry {
+  level: 'SUCCESS' | 'ERROR' | 'WARNING' | 'INFO';
+  message: string;
+}
+
 export interface ApiResult {
   success: boolean;
   error?: string;
-  logs?: string[];
+  logs?: (string | LogEntry)[];  // Can be strings (legacy) or LogEntry objects (new)
+  userLogs?: LogEntry[];  // New format from server.js
   classes?: string[];
   zip_files?: Array<{ index: number; filename: string; path: string }>;
   folders?: Array<{ name: string; path: string; size: string; modified: string }>;
@@ -60,17 +67,34 @@ async function apiCall({ endpoint, body, logMessage, errorMessage, addLog }: Api
 
     const result = await response.json();
     
-    if (addLog && result.logs) {
-      result.logs.forEach((message: string) => {
-        // Split multi-line messages and add each line separately
-        const lines = message.split('\n');
-        lines.forEach(line => {
-          const trimmed = line.trim();
-          if (trimmed) {
-            addLog(trimmed);
+    // Process logs from backend
+    if (addLog) {
+      // New format: userLogs array of {level, message} objects
+      if (result.userLogs && Array.isArray(result.userLogs)) {
+        result.userLogs.forEach((entry: LogEntry | string) => {
+          if (typeof entry === 'string') {
+            addLog(entry);
+          } else if (entry && entry.message) {
+            addLog(entry.message);
           }
         });
-      });
+      }
+      // Legacy format: logs array of strings
+      else if (result.logs && Array.isArray(result.logs)) {
+        result.logs.forEach((entry: LogEntry | string) => {
+          if (typeof entry === 'string') {
+            const lines = entry.split('\n');
+            lines.forEach(line => {
+              const trimmed = line.trim();
+              if (trimmed) {
+                addLog(trimmed);
+              }
+            });
+          } else if (entry && entry.message) {
+            addLog(entry.message);
+          }
+        });
+      }
     }
     
     return result;

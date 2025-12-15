@@ -153,27 +153,26 @@ When planning implementation:
 
 ---
 
-## Critical Rule: Maintain User Message Preview
+## Critical Rule: User-Facing Log Management
 
-**Whenever you add, modify, or remove any user-facing log message in the application, you MUST also update `preview_user_messages.py`.**
+**The application uses a dual-channel logging system:**
+- `user_log(message)` - User-facing messages (shown in frontend)
+- `dev_log(message)` - Developer/debug messages (hidden from users)
 
-The `SCENARIOS` dictionary in that file contains all user-facing messages organized by operation type. This allows the user to preview and edit all log messages in one place.
+### Log Message Workflow:
+1. **Edit logs**: Open `edit_user_logs_gui.py` to visually edit all user-facing log messages
+2. **Save changes**: GUI saves to `editable_user_logs.json`
+3. **Apply to code**: Inform assistant of changes to update source files
 
 ### Files that generate user-facing logs:
-- `src/components/Option2.tsx` - Frontend log messages (addLog calls)
-- `src/components/LogTerminal.tsx` - Log display and filtering
-- `grading_processor.py` - Processing status messages
-- `extract_grades_cli.py` - Grade extraction messages
-- `split_pdf_cli.py` - PDF split messages
 - `process_quiz_cli.py` - Quiz processing messages
 - `process_completion_cli.py` - Completion processing messages
-- `import_file_handler.py` - Import file validation messages
+- `extract_grades_cli.py` - Grade extraction messages
+- `split_pdf_cli.py` - PDF split messages
+- `clear_data_cli.py` - Data cleanup messages
 - `helper_cli.py` - Folder/class loading messages
-
-### When updating logs:
-1. Make the change in the source file
-2. Update the corresponding scenario in `preview_user_messages.py`
-3. If it's a new operation type, add a new scenario
+- `grading_processor.py` - Processing status messages
+- `src/components/Option2.tsx` - Frontend log messages (addLog calls)
 
 ---
 

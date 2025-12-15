@@ -21,7 +21,7 @@ from import_file_handler import validate_import_file_early, validate_required_co
 from grading_constants import REQUIRED_COLUMNS_COUNT, END_OF_LINE_COLUMN_INDEX, CONFIDENCE_HIGH, CONFIDENCE_MEDIUM
 from file_utils import open_file_with_default_app
 from grading_processor import format_error_message
-from user_logger import user_log, dev_log
+from user_messages import log, log_raw
 
 
 def _validate_import_file_structure(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, str]:
@@ -415,40 +415,34 @@ def _format_extraction_results(
     # Display issues organized by category
     has_issues = no_grade_found or low_confidence or name_matching or no_submissions
     if has_issues:
-        user_log("")
-        user_log("ISSUES FOUND (Please Review):")
+        log("GRADES_ISSUES_HEADER")
         
         # Category 1: No Grade Found
         if no_grade_found:
-            user_log("")
-            user_log("❌ NO GRADE FOUND:")
+            log("GRADES_NO_GRADE")
             for student in sorted(set(no_grade_found)):
-                user_log(f"  {student}")
+                log_raw(f"  {student}", "ERROR")
         
         # Category 2: Low Confidence
         if low_confidence:
-            user_log("")
-            user_log("❌ LOW CONFIDENCE (needs verification):")
+            log("GRADES_LOW_CONFIDENCE")
             for item in sorted(set(low_confidence)):
-                user_log(f"  {item}")
+                log_raw(f"  {item}", "WARNING")
         
         # Category 3: Name Matching Issues
         if name_matching:
-            user_log("")
-            user_log("⚠️ NAME MATCHING ISSUES (fuzzy match - needs verification):")
+            log("GRADES_NAME_ISSUES")
             for item in sorted(set(name_matching)):
-                user_log(f"  {item}")
+                log_raw(f"  {item}", "WARNING")
         
         # Category 4: No Submissions
         if no_submissions:
-            user_log("")
-            user_log("❌ NO SUBMISSIONS:")
+            log("GRADES_NO_SUBMISSIONS")
             for student in sorted(set(no_submissions)):
-                user_log(f"  {student}")
+                log_raw(f"  {student}", "ERROR")
     
-    # Print completion message (this triggers the "Open Import File" button in frontend)
-    user_log("")
-    user_log("✅ Grade extraction completed successfully!")
+    # Print completion message
+    log("GRADES_SUCCESS")
 
 
 def main() -> None:
@@ -501,8 +495,7 @@ def main() -> None:
             sys.exit(1)
         
         # Print starting message after validation passes
-        user_log("🔬 Starting grade extraction...")
-        user_log("")
+        log("GRADES_STARTING")
         
         # Find the most recent "grade processing [Assignment]" folder
         import re
@@ -534,11 +527,13 @@ def main() -> None:
                 combined_pdf_path = os.path.join(pdfs_folder, pdf_files[0])
         
         if not combined_pdf_path or not os.path.exists(combined_pdf_path):
+            log("GRADES_PDF_NOT_FOUND")
             raise Exception("Combined PDF not found")
         
         # Load CSV BEFORE extraction so we can pass roster names for fuzzy matching
         import_file_path = os.path.join(class_folder, "Import File.csv")
         if not os.path.exists(import_file_path):
+            log("GRADES_IMPORT_NOT_FOUND")
             raise Exception("Import file not found")
         
         df = pd.read_csv(import_file_path)
@@ -577,13 +572,10 @@ def main() -> None:
         student_grades = []  # Track all students with their grades and confidence
         
         def log_callback(message):
-            # Route messages to appropriate logger based on content
-            # Most messages from extract_grades_simple are user-facing
-            # Debug messages (with "🔍 DEBUG:") are developer-only
-            if message and "🔍 DEBUG:" in message:
-                dev_log(message)
-            else:
-                user_log(message)
+            # Route messages to our logging system
+            # Skip debug messages entirely, log others as INFO
+            if message and "🔍 DEBUG:" not in message:
+                log_raw(message)
             
             # Collect all log messages for tracking
             all_logs.append(message)
@@ -623,7 +615,7 @@ def main() -> None:
         skipped_students = []
         
         if not grades_result:
-            extraction_errors.append("❌ No grades were extracted from the PDF")
+            log("GRADES_NO_RESULTS")
             grades_result = {}  # Set to empty dict to avoid errors
         
         # Match grades to roster

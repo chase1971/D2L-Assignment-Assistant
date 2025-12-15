@@ -278,14 +278,28 @@ function parseZipFilesFromOutput(output, downloadsPath) {
 // Helper to extract user logs from result
 function getUserLogs(result) {
   if (result.userLogs && result.userLogs.length > 0) {
+    // New format: array of {level, message} objects
     return result.userLogs;
   }
-  // Legacy: parse output and filter out [DEV] lines
+  
+  // Fallback: check for logs array in JSON data (legacy format)
+  if (result.data && result.data.logs && result.data.logs.length > 0) {
+    return result.data.logs.map(msg => ({ level: 'INFO', message: msg }));
+  }
+  
+  // Legacy: parse output
   return result.output.split('\n')
-    .filter(l => l.trim() && !l.trim().startsWith('[DEV]'))
+    .filter(l => l.trim() && !l.trim().startsWith('[DEV]') && !l.trim().startsWith('{'))
     .map(l => {
       const trimmed = l.trim();
-      return trimmed.startsWith('[USER]') ? trimmed.substring(7) : trimmed;
+      const logMatch = trimmed.match(/^\[LOG:(SUCCESS|ERROR|WARNING|INFO)\] (.+)$/);
+      if (logMatch) {
+        return { level: logMatch[1], message: logMatch[2] };
+      }
+      if (trimmed.startsWith('[USER]')) {
+        return { level: 'INFO', message: trimmed.substring(7) };
+      }
+      return { level: 'INFO', message: trimmed };
     });
 }
 
@@ -363,20 +377,36 @@ async function runPythonScript(scriptName, args = []) {
         // If JSON parsing fails, that's okay - we'll just use stdout
       }
       
-      // Parse stdout to separate user and developer logs
+      // Parse stdout to extract user logs
+      // New format: [LOG:LEVEL] message (e.g., [LOG:SUCCESS] ✅ Quiz processing completed!)
+      // Legacy format: [USER] message or plain text
       const userLogs = [];
-      const devLogs = [];
       const lines = stdout.split('\n').filter(l => l.trim());
       
       lines.forEach(line => {
         const trimmed = line.trim();
+        
+        // New format: [LOG:LEVEL] message
+        const logMatch = trimmed.match(/^\[LOG:(SUCCESS|ERROR|WARNING|INFO)\] (.+)$/);
+        if (logMatch) {
+          userLogs.push({ level: logMatch[1], message: logMatch[2] });
+          return;
+        }
+        
+        // Legacy format: [USER] message
         if (trimmed.startsWith('[USER]')) {
-          userLogs.push(trimmed.substring(7)); // Remove '[USER]' prefix
-        } else if (trimmed.startsWith('[DEV]')) {
-          devLogs.push(trimmed.substring(6)); // Remove '[DEV]' prefix
-        } else {
-          // Legacy format - treat as user log for backward compatibility
-          userLogs.push(trimmed);
+          userLogs.push({ level: 'INFO', message: trimmed.substring(7) });
+          return;
+        }
+        
+        // Skip [DEV] messages and other internal output
+        if (trimmed.startsWith('[DEV]') || trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          return;
+        }
+        
+        // Legacy plain text - treat as INFO (for backward compatibility with logs array in JSON)
+        if (trimmed) {
+          userLogs.push({ level: 'INFO', message: trimmed });
         }
       });
       
@@ -386,8 +416,7 @@ async function runPythonScript(scriptName, args = []) {
         error: stderr,
         code,
         data: jsonData,  // Include parsed JSON data if available
-        userLogs,        // User-facing logs
-        devLogs          // Developer-only logs
+        userLogs         // User-facing logs with level info
       });
     });
 

@@ -4,12 +4,13 @@ import os
 import subprocess
 import platform
 import time
-from typing import Optional, Tuple, Set, Dict, Any, Callable, List
+from typing import Optional, Tuple, Set, Dict, Any, List
 
 import pandas as pd
 
 from name_matching import names_match_fuzzy
 from grading_constants import REQUIRED_COLUMNS_COUNT, END_OF_LINE_COLUMN_INDEX, CONFIDENCE_HIGH
+from user_messages import log
 
 
 def validate_required_columns(df: pd.DataFrame) -> Tuple[bool, Optional[List[str]]]:
@@ -50,7 +51,7 @@ def validate_required_columns(df: pd.DataFrame) -> Tuple[bool, Optional[List[str
     return True, None
 
 
-def _close_excel_for_file(file_path: str, log_callback: Optional[Callable[[str], None]] = None) -> bool:
+def _close_excel_for_file(file_path: str) -> bool:
     """
     Close any Excel process that might have the specified file open.
     Returns True if Excel was closed, False otherwise.
@@ -68,8 +69,7 @@ def _close_excel_for_file(file_path: str, log_callback: Optional[Callable[[str],
         )
         
         if result.returncode == 0:
-            if log_callback:
-                log_callback("   📋 Closed Excel to save import file")
+            log("IMPORT_CLOSED_EXCEL")
             return True
         return False
     except Exception:
@@ -78,8 +78,7 @@ def _close_excel_for_file(file_path: str, log_callback: Optional[Callable[[str],
 
 def _validate_and_fix_import_file(
     df: pd.DataFrame, 
-    import_file_path: str,
-    log_callback: Optional[Callable[[str], None]] = None
+    import_file_path: str
 ) -> pd.DataFrame:
     """
     Validate the import file has required columns and fix structure if needed.
@@ -116,8 +115,7 @@ def _validate_and_fix_import_file(
             break
     
     if not eol_exists:
-        if log_callback:
-            log_callback("   ⚠️  End-of-Line Indicator not found - adding it to column F")
+        log("IMPORT_NO_EOL")
         
         # Keep only the first 5 columns, then add End-of-Line Indicator
         df = df.iloc[:, :REQUIRED_COLUMNS_COUNT].copy()
@@ -232,7 +230,6 @@ def validate_import_file_early(class_folder_path: str) -> Tuple[bool, str]:
 
 def load_import_file(
     class_folder_path: str, 
-    log_callback: Optional[Callable[[str], None]] = None,
     skip_validation: bool = False
 ) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
@@ -240,7 +237,6 @@ def load_import_file(
     
     Args:
         class_folder_path: Path to the class folder
-        log_callback: Optional callback for logging messages
         skip_validation: If True, skip validation (for process quizzes only)
     
     Returns:
@@ -249,31 +245,28 @@ def load_import_file(
     import_file_path = os.path.join(class_folder_path, "Import File.csv")
     
     if not os.path.exists(import_file_path):
-        if log_callback:
-            log_callback(f"❌ Import File not found: {import_file_path}")
+        log("IMPORT_FILE_NOT_FOUND", path=import_file_path)
         return None, None
     
     try:
         df = pd.read_csv(import_file_path, dtype=str)
     except Exception as e:
-        if log_callback:
-            error_str = str(e).lower()
-            if "being used by another process" in error_str or "locked" in error_str:
-                log_callback("❌ The file is being used by another process")
-            elif "permission denied" in error_str:
-                log_callback("❌ Cannot access file - permission denied")
-            else:
-                log_callback("❌ Unable to read file")
+        error_str = str(e).lower()
+        if "being used by another process" in error_str or "locked" in error_str:
+            log("IMPORT_FILE_IN_USE")
+        elif "permission denied" in error_str:
+            log("IMPORT_PERMISSION_DENIED")
+        else:
+            log("IMPORT_UNABLE_TO_READ")
         return None, None
     
     # Validate and fix the import file structure (skip for process quizzes)
     if not skip_validation:
-        df = _validate_and_fix_import_file(df, import_file_path, log_callback)
+        df = _validate_and_fix_import_file(df, import_file_path)
     
-    if log_callback:
-        log_callback("")
-        log_callback(f"Loaded Import File: {len(df)} students")
-        log_callback("")
+    log("EMPTY_LINE")
+    log("IMPORT_LOADED_STUDENTS", count=len(df))
+    log("EMPTY_LINE")
     
     return df, import_file_path
 
@@ -286,7 +279,6 @@ def update_import_file(
     unreadable: Set[str], 
     no_submission: Set[str], 
     grades_map: Optional[Dict[str, Any]] = None, 
-    log_callback: Optional[Callable[[str], None]] = None, 
     dont_override: bool = False
 ) -> pd.DataFrame:
     """
@@ -300,67 +292,60 @@ def update_import_file(
         unreadable: Set of usernames with unreadable submissions
         no_submission: Set of usernames with no submission
         grades_map: Optional dict mapping student names to grades
-        log_callback: Optional callback for logging messages
         dont_override: If True, add new column after column E instead of overriding
     
     Returns:
         Updated DataFrame
     """
     try:
-        if log_callback:
-            log_callback("")
-            log_callback("-" * 40)
-            log_callback("UPDATING IMPORT FILE")
-            log_callback("-" * 40)
-            log_callback(f"Current columns: {list(import_df.columns)}")
-            log_callback("")
+        log("EMPTY_LINE")
+        log("SEPARATOR_LINE")
+        log("IMPORT_UPDATE_HEADER")
+        log("SEPARATOR_LINE")
+        log("IMPORT_CURRENT_COLUMNS", columns=list(import_df.columns))
+        log("EMPTY_LINE")
         
         # Step 1: Clean up any corrupted columns after End-of-Line Indicator
-        import_df = _cleanup_columns_after_eol(import_df, log_callback)
+        import_df = _cleanup_columns_after_eol(import_df)
         
         # Create column name
         column_name = f"{assignment_name} Points Grade"
         
-        if log_callback:
-            log_callback(f"   New column name: '{column_name}'")
+        log("IMPORT_NEW_COLUMN", name=column_name)
         
         # Handle dont_override flag
         if dont_override:
-            _handle_dont_override_mode(import_df, column_name, log_callback)
+            _handle_dont_override_mode(import_df, column_name)
         else:
-            import_df = _handle_override_mode(import_df, column_name, log_callback)
+            import_df = _handle_override_mode(import_df, column_name)
         
         # Update grades
-        if log_callback:
-            log_callback(f"   Updating grades...")
+        log("IMPORT_UPDATING_GRADES")
         
         fuzzy_match_warnings = _update_grades(
             import_df, column_name, submitted, unreadable, 
-            grades_map, log_callback
+            grades_map
         )
         
-        if log_callback:
-            log_callback(f"   Saving to: {import_file_path}")
+        log("IMPORT_SAVING_TO", path=import_file_path)
         
         # Save the file
-        _save_import_file(import_df, import_file_path, log_callback)
+        _save_import_file(import_df, import_file_path)
         
-        if log_callback:
-            log_callback("")
-            if fuzzy_match_warnings:
-                log_callback("   ⚠️  Fuzzy name matches (please verify):")
-                for warning in fuzzy_match_warnings:
-                    log_callback(warning)
-                log_callback("")
-            log_callback("")
+        log("EMPTY_LINE")
+        if fuzzy_match_warnings:
+            log("IMPORT_FUZZY_HEADER")
+            for warning in fuzzy_match_warnings:
+                log("IMPORT_FUZZY_ITEM", warning=warning)
+            log("EMPTY_LINE")
+        log("EMPTY_LINE")
         
         return import_df
     
     except Exception as e:
         error_msg = str(e)
         if "You might have the import file open" not in error_msg:
-            if log_callback:
-                log_callback(f"Error updating import file: {error_msg}")
+            log("IMPORT_UPDATE_ERROR", error=error_msg)
         raise
 
 
@@ -377,7 +362,7 @@ def _find_end_of_line_indicator_index(import_df: pd.DataFrame) -> int:
     return len(import_df.columns) - 1
 
 
-def _cleanup_columns_after_eol(import_df: pd.DataFrame, log_callback: Optional[Callable[[str], None]] = None) -> pd.DataFrame:
+def _cleanup_columns_after_eol(import_df: pd.DataFrame) -> pd.DataFrame:
     """
     Remove all columns to the RIGHT of End-of-Line Indicator.
     These are corrupted/duplicate Verify columns that need to be cleaned up.
@@ -387,8 +372,8 @@ def _cleanup_columns_after_eol(import_df: pd.DataFrame, log_callback: Optional[C
     if eol_index < len(import_df.columns) - 1:
         # There are columns after End-of-Line Indicator - remove them
         columns_to_remove = list(import_df.columns[eol_index + 1:])
-        if log_callback and columns_to_remove:
-            log_callback(f"   🧹 Cleaning up {len(columns_to_remove)} corrupted columns after End-of-Line Indicator")
+        if columns_to_remove:
+            log("IMPORT_CLEANUP_COLUMNS", count=len(columns_to_remove))
         
         # Keep only columns up to and including End-of-Line Indicator
         import_df = import_df.iloc[:, :eol_index + 1].copy()
@@ -398,25 +383,21 @@ def _cleanup_columns_after_eol(import_df: pd.DataFrame, log_callback: Optional[C
 
 def _handle_dont_override_mode(
     import_df: pd.DataFrame, 
-    column_name: str, 
-    log_callback: Optional[Callable[[str], None]]
+    column_name: str
 ) -> None:
     """Handle don't override mode - insert new column before End-of-Line Indicator."""
-    if log_callback:
-        log_callback(f"   Mode: Don't override - adding new column before End-of-Line Indicator")
+    log("IMPORT_MODE_DONT_OVERRIDE")
     
     # Ensure we have at least 5 columns (A-E)
     if len(import_df.columns) < REQUIRED_COLUMNS_COUNT:
-        if log_callback:
-            log_callback(f"   Warning: Less than {REQUIRED_COLUMNS_COUNT} columns, adding empty columns")
+        log("IMPORT_WARNING_FEW_COLUMNS", required=REQUIRED_COLUMNS_COUNT)
         while len(import_df.columns) < REQUIRED_COLUMNS_COUNT:
             # Use empty string for column name to avoid "Unnamed" issues
             import_df[f'_temp_col_{len(import_df.columns)}'] = ""
     
     # Check if column already exists
     if column_name in import_df.columns:
-        if log_callback:
-            log_callback(f"   Column '{column_name}' already exists, using existing column")
+        log("IMPORT_COLUMN_EXISTS", name=column_name)
     else:
         # Find the End-of-Line Indicator by name (not just last column)
         eol_index = _find_end_of_line_indicator_index(import_df)
@@ -424,18 +405,15 @@ def _handle_dont_override_mode(
         
         # Insert new grade column just before End-of-Line Indicator
         import_df.insert(eol_index, column_name, "")
-        if log_callback:
-            log_callback(f"   Added new column '{column_name}' at index {eol_index} (before '{eol_col_name}')")
+        log("IMPORT_ADDED_COLUMN", name=column_name, index=eol_index, before=eol_col_name)
 
 
 def _handle_override_mode(
     import_df: pd.DataFrame, 
-    column_name: str, 
-    log_callback: Optional[Callable[[str], None]]
+    column_name: str
 ) -> pd.DataFrame:
     """Handle override mode - reset columns, keeping first 5 fixed columns and End-of-Line Indicator."""
-    if log_callback:
-        log_callback(f"   Mode: Override - removing old grade columns")
+    log("IMPORT_MODE_OVERRIDE")
     
     # Find the End-of-Line Indicator by name
     eol_index = _find_end_of_line_indicator_index(import_df)
@@ -444,26 +422,24 @@ def _handle_override_mode(
     # First 5 columns are fixed: OrgDefinedId, Username, First Name, Last Name, Email
     first_five_columns = list(import_df.columns[:REQUIRED_COLUMNS_COUNT])
     
-    if log_callback:
-        log_callback(f"   Fixed columns (0-{REQUIRED_COLUMNS_COUNT-1}): {first_five_columns}")
-        log_callback(f"   End-of-Line Indicator: '{eol_col_name}' at index {eol_index}")
-        log_callback(f"   Current total columns: {len(import_df.columns)}")
+    log("IMPORT_FIXED_COLUMNS", count=REQUIRED_COLUMNS_COUNT-1, columns=first_five_columns)
+    log("IMPORT_EOL_INFO", name=eol_col_name, index=eol_index)
+    log("IMPORT_TOTAL_COLUMNS", count=len(import_df.columns))
     
     # Keep first 5 columns + End-of-Line Indicator (ignore any columns after it)
     columns_to_keep = first_five_columns + [eol_col_name]
     
-    if log_callback and eol_index > REQUIRED_COLUMNS_COUNT:
+    if eol_index > REQUIRED_COLUMNS_COUNT:
         columns_removed = list(import_df.columns[REQUIRED_COLUMNS_COUNT:eol_index])
-        log_callback(f"   Removing {len(columns_removed)} old grade columns: {columns_removed}")
+        log("IMPORT_REMOVING_OLD", count=len(columns_removed), columns=columns_removed)
     
     import_df = import_df[columns_to_keep].copy()
     
     # Insert the new grade column at index 5 (after Email, before End-of-Line Indicator)
     import_df.insert(END_OF_LINE_COLUMN_INDEX, column_name, "")
     
-    if log_callback:
-        log_callback(f"   Result: {len(import_df.columns)} columns")
-        log_callback(f"   Added grade column '{column_name}' at index 5")
+    log("IMPORT_RESULT_COLUMNS", count=len(import_df.columns))
+    log("IMPORT_ADDED_AT_INDEX", name=column_name)
     
     return import_df
 
@@ -473,8 +449,7 @@ def _update_grades(
     column_name: str,
     submitted: Set[str],
     unreadable: Set[str],
-    grades_map: Optional[Dict[str, Any]],
-    log_callback: Optional[Callable[[str], None]]
+    grades_map: Optional[Dict[str, Any]]
 ) -> List[str]:
     """Update grades in the DataFrame. Returns list of fuzzy match warnings."""
     fuzzy_match_warnings = []
@@ -549,8 +524,7 @@ def _update_grades(
 
 def _save_import_file(
     import_df: pd.DataFrame, 
-    import_file_path: str, 
-    log_callback: Optional[Callable[[str], None]]
+    import_file_path: str
 ) -> None:
     """Save the import file with proper error handling. Auto-closes Excel if needed."""
     # First attempt to save
@@ -561,7 +535,7 @@ def _save_import_file(
         # Check if it's a permission error (file is open)
         if isinstance(e, PermissionError) or (isinstance(e, OSError) and e.errno == 13):
             # Try to close Excel and retry
-            if _close_excel_for_file(import_file_path, log_callback):
+            if _close_excel_for_file(import_file_path):
                 # Give Excel a moment to fully close
                 time.sleep(0.5)
                 
@@ -574,9 +548,8 @@ def _save_import_file(
             
             # If we get here, closing Excel didn't help
             friendly_msg = "You might have the import file open, please close and try again!"
-            if log_callback:
-                log_callback(f"")
-                log_callback(f"❌ {friendly_msg}")
+            log("EMPTY_LINE")
+            log("IMPORT_UPDATE_ERROR", error=friendly_msg)
             raise Exception(friendly_msg)
         else:
             raise

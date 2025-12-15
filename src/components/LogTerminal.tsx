@@ -169,16 +169,23 @@ export default function LogTerminal({
           <div className="opacity-60">Awaiting commands...</div>
         ) : (
           filteredLogs.map((log, index) => {
-            const isError = log.includes('❌') || log.toLowerCase().includes('error');
+            // Strip [LOG:LEVEL] prefix if it somehow made it through
+            let cleanLog = log;
+            const logMatch = log.match(/^\[LOG:(SUCCESS|ERROR|WARNING|INFO)\] (.+)$/);
+            if (logMatch) {
+              cleanLog = logMatch[2];  // Just the message without prefix
+            }
+            
+            const isError = cleanLog.includes('❌') || cleanLog.toLowerCase().includes('error');
             
             // Check for student PDF patterns
-            const hasPdfFound = log.includes(': PDF found') || log.match(/: \d+ PDFs? found/i);
-            const isStudentLine = hasPdfFound && !log.toLowerCase().includes('combined pdf') && !log.toLowerCase().includes('created');
+            const hasPdfFound = cleanLog.includes(': PDF found') || cleanLog.match(/: \d+ PDFs? found/i);
+            const isStudentLine = hasPdfFound && !cleanLog.toLowerCase().includes('combined pdf') && !cleanLog.toLowerCase().includes('created');
             
             if (isStudentLine) {
-              const colonIndex = log.indexOf(':');
-              const extractedName = colonIndex > 0 ? log.substring(0, colonIndex).trim() : '';
-              const hasMultiple = log.match(/(\d+) PDFs? found/i);
+              const colonIndex = cleanLog.indexOf(':');
+              const extractedName = colonIndex > 0 ? cleanLog.substring(0, colonIndex).trim() : '';
+              const hasMultiple = cleanLog.match(/(\d+) PDFs? found/i);
               const pdfCount = hasMultiple ? parseInt(hasMultiple[1]) : 1;
               const suffix = pdfCount > 1 ? ` (${pdfCount} PDFs combined)` : '';
               
@@ -219,12 +226,12 @@ export default function LogTerminal({
             }
             
             // Check for completion messages - show import file link
-            if (log.includes('Completion processing completed!') || 
-                log.includes('Grade extraction complete!') ||
-                log.includes('Grade extraction completed successfully!')) {
+            if (cleanLog.includes('Completion processing completed!') || 
+                cleanLog.includes('Grade extraction complete!') ||
+                cleanLog.includes('Grade extraction completed successfully!')) {
               return (
                 <div key={index} className={isError ? 'text-red-500' : ''}>
-                  <div>{log}</div>
+                  <div>{cleanLog}</div>
                   <div className="mt-1">
                     <button
                       onClick={handleOpenImportFile}
@@ -239,14 +246,14 @@ export default function LogTerminal({
             }
             
             // Skip status messages
-            if (log.toLowerCase().includes('opening combined pdf') || 
-                log.toLowerCase().includes('combined pdf ready for manual grading')) {
+            if (cleanLog.toLowerCase().includes('opening combined pdf') || 
+                cleanLog.toLowerCase().includes('combined pdf ready for manual grading')) {
               return null;
             }
             
             return (
-              <div key={index} className={isError ? 'text-red-500' : ''}>
-                {log}
+              <div key={index} className={isError ? 'text-red-500' : ''} style={{ whiteSpace: 'pre-wrap' }}>
+                {cleanLog}
               </div>
             );
           })

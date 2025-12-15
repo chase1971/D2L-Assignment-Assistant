@@ -17,6 +17,7 @@ from rich.table import Table
 from rich import box
 from grading_processor import run_reverse_process, format_error_message
 from config_reader import get_downloads_path, get_rosters_path
+from user_messages import log
 
 # Initialize Rich console for clean output
 console = Console()
@@ -239,7 +240,7 @@ def generate_index_html(student_folders, processing_folder, original_index_path=
     
     return '\n'.join(html_lines)
 
-def rezip_folders(drive, class_name, assignment_name, original_zip_name, log_callback):
+def rezip_folders(drive, class_name, assignment_name, original_zip_name):
     """Rezip the processed folders back into a ZIP file"""
     try:
         # Get configured rosters path
@@ -263,13 +264,13 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, log_cal
         unzipped_folder = os.path.join(processing_folder, "unzipped folders")
         
         if not os.path.exists(unzipped_folder):
-            log_callback("❌ Unzipped folders directory not found")
+            log("SPLIT_UNZIPPED_NOT_FOUND")
             return False
         
         # Create new ZIP file in grade processing folder
         new_zip_path = os.path.join(processing_folder, original_zip_name)
         
-        log_callback(f"📦 Creating new ZIP: {original_zip_name}")
+        log("SPLIT_CREATING_ZIP", filename=original_zip_name)
         
         # Collect all student folders from unzipped folders directory
         student_folders = []
@@ -288,7 +289,7 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, log_cal
             # Copy it to index.html for use in ZIP
             import shutil
             shutil.copy2(original_index_path, temp_index)
-            log_callback("   Using preserved original index.html (exact copy)")
+            log("SPLIT_USING_PRESERVED_INDEX")
         elif os.path.exists(temp_index):
             # The index.html from extraction exists - use it as-is
             index_html_path = temp_index
@@ -298,15 +299,15 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, log_cal
                 shutil.copy2(temp_index, original_index_path)
             except Exception:
                 pass
-            log_callback("   Using original index.html from extraction (exact copy)")
+            log("SPLIT_USING_EXTRACTED_INDEX")
         else:
             # No original exists - generate a new one (fallback)
-            log_callback("   Warning: No original index.html found, generating new one")
+            log("SPLIT_NO_ORIGINAL_INDEX")
             index_html_content = generate_index_html(student_folders, unzipped_folder, None)
             index_html_path = temp_index
             with open(index_html_path, 'w', encoding='utf-8') as f:
                 f.write(index_html_content)
-            log_callback("   Generated new index.html (fallback - may not work with D2L)")
+            log("SPLIT_GENERATED_NEW_INDEX")
         
         # Check for any other files in the unzipped folder that should be included
         other_files = []
@@ -323,13 +324,13 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, log_cal
             # First, add index.html to the root of the ZIP
             zip_file_to_add = temp_index if os.path.exists(temp_index) else index_html_path
             zipf.write(zip_file_to_add, 'index.html')
-            log_callback("   Added index.html to ZIP root")
+            log("SPLIT_ADDED_INDEX_TO_ZIP")
             
             # Add any other root-level files that were in the original ZIP
             for other_file in other_files:
                 file_name = os.path.basename(other_file)
                 zipf.write(other_file, file_name)
-                log_callback(f"   Added root file: {file_name}")
+                log("SPLIT_ADDED_ROOT_FILE", filename=file_name)
             
             # Add all student folders to the ZIP
             for folder_path in student_folders:
@@ -343,16 +344,16 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, log_cal
                         zipf.write(file_path, arcname)
                         # Store in formatter for clean table display (don't log individually)
                         formatter.file_additions.append(arcname)
-                        # Still add to JSON logs
-                        log_callback(f"Added: {arcname}")
+                        # Log to catalog
+                        log("SPLIT_ADDED_TO_ZIP", filename=arcname)
         
-        log_callback(f"✅ Created ZIP file: {new_zip_path}")
+        log("SPLIT_ZIP_CREATED", filename=new_zip_path)
         return True
         
     except Exception as e:
-        log_callback(f"❌ Error creating ZIP: {str(e)}")
+        log("SPLIT_ERROR_CREATING_ZIP", error=str(e))
         import traceback
-        log_callback(f"   Details: {traceback.format_exc()}")
+        log("SPLIT_ERROR_DETAILS", details=traceback.format_exc())
         return False
 
 def main():
@@ -392,51 +393,21 @@ def main():
         pdf_path = None
     
     try:
-        # Simplified logs - only important information
-        logs = []
-        logs.append("📦 Starting PDF split and rezip...")
+        log("SPLIT_STARTING_PROCESS")
+        log("EMPTY_LINE")
         
         # Collect errors during processing
         processing_errors = []
-        progress_messages = []
-        
-        def log_callback(message):
-            # Collect important messages for logging
-            message_lower = message.lower()
-            
-            # Collect errors and warnings
-            if (
-                'error' in message_lower or 
-                '❌' in message or 
-                'failed' in message_lower or
-                'could not find folder for' in message_lower
-            ):
-                processing_errors.append(message)
-                logs.append(message)  # Add errors to logs immediately
-            # Collect key progress messages
-            elif (
-                'reverse processing' in message_lower or
-                'processed' in message_lower and 'student' in message_lower or
-                'split' in message_lower or
-                'extracted' in message_lower or
-                'combined pdf' in message_lower
-            ):
-                progress_messages.append(message)
-                logs.append(message)  # Add progress to logs
-            # Also collect completion messages
-            elif 'complete' in message_lower or '✅' in message:
-                logs.append(message)
         
         # Run the reverse process
-        logs.append("")
-        logs.append("Splitting combined PDF into individual student PDFs...")
-        result = run_reverse_process(drive, class_name, log_callback, pdf_path)
+        log("SPLIT_SPLITTING_PDF")
+        result = run_reverse_process(drive, class_name, pdf_path)
         
         students_count = len(result.submitted) if hasattr(result, 'submitted') else 0
         if students_count > 0:
-            logs.append(f"✅ Successfully split PDF for {students_count} students")
+            log("SPLIT_SUCCESS_COUNT", count=students_count)
         else:
-            logs.append("⚠️ No students processed - check if combined PDF exists")
+            log("SPLIT_NO_STUDENTS")
         
         # Get assignment name from result if available, or from CLI args
         if not assignment_name and hasattr(result, 'assignment_name'):
@@ -462,45 +433,35 @@ def main():
         
         rezip_success = False
         if original_zip_name and assignment_name:
-            logs.append("")
-            logs.append(f"Creating ZIP file: {original_zip_name}...")
+            log("EMPTY_LINE")
+            log("SPLIT_CREATING_ZIP_FILE", filename=original_zip_name)
             
-            def rezip_log_callback(msg):
-                # Collect rezip progress messages
-                if 'error' in msg.lower() or '❌' in msg or 'failed' in msg.lower():
-                    processing_errors.append(msg)
-                    logs.append(msg)
-                elif 'created zip' in msg.lower() or '✅' in msg or 'added' in msg.lower():
-                    logs.append(msg)
-            
-            rezip_success = rezip_folders(drive, class_name, assignment_name, original_zip_name, rezip_log_callback)
+            # Note: rezip_folders will use log() directly now
+            rezip_success = rezip_folders(drive, class_name, assignment_name, original_zip_name)
             
             if rezip_success:
-                logs.append(f"✅ Created ZIP file: {original_zip_name}")
+                log("SPLIT_ZIP_CREATED", filename=original_zip_name)
             else:
-                error_msg = "⚠️ ZIP creation failed, but PDFs were split"
-                processing_errors.append(error_msg)
-                logs.append(error_msg)
+                log("SPLIT_ZIP_FAILED")
+                processing_errors.append("ZIP creation failed")
         else:
-            error_msg = "⚠️ Could not determine assignment name or ZIP name, skipping rezip"
-            processing_errors.append(error_msg)
-            logs.append(error_msg)
+            log("SPLIT_NO_NAME")
+            processing_errors.append("Could not determine assignment name or ZIP name")
         
         # Build simplified output
         if processing_errors:
-            logs.append("")
-            logs.append("❌ Errors:")
+            log("EMPTY_LINE")
+            log("SPLIT_ERRORS_HEADER")
             for error in processing_errors:
-                logs.append(f"   {error}")
+                log("SPLIT_ERROR_ITEM", error=error)
         
-        logs.append("")
-        logs.append("✅ completed!")
+        log("EMPTY_LINE")
+        log("SPLIT_COMPLETED")
         
         # Output JSON to stdout (for backend)
         response = {
             "success": True,
             "message": "PDF splitting and rezipping completed",
-            "logs": logs,
             "students_processed": students_count,
             "zip_created": original_zip_name is not None and rezip_success
         }
@@ -511,14 +472,12 @@ def main():
         # Use standardized error formatting
         friendly_error = format_error_message(e)
         
-        # Build simplified error output
-        error_logs = []
-        error_logs.append(f"❌ {friendly_error}")
+        # Log the error
+        log("ERR_UNEXPECTED", error=friendly_error)
         
         error_response = {
             "success": False,
-            "error": friendly_error,
-            "logs": error_logs
+            "error": friendly_error
         }
         print(json.dumps(error_response))
         sys.exit(1)

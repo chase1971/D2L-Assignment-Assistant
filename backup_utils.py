@@ -2,12 +2,11 @@
 
 import os
 import shutil
-from typing import Callable, Optional
+from user_messages import log
 
 
 def backup_existing_folder(
     folder_path: str, 
-    log_callback: Optional[Callable[[str], None]] = None,
     overwrite: bool = False
 ) -> bool:
     """
@@ -16,7 +15,6 @@ def backup_existing_folder(
     
     Args:
         folder_path: Path to the folder to backup
-        log_callback: Optional callback for logging messages
         overwrite: If True, delete the folder. If False, create a numbered backup.
     
     Returns:
@@ -27,21 +25,18 @@ def backup_existing_folder(
     
     if overwrite:
         # Delete the folder
-        if log_callback:
-            log_callback("")
-            log_callback("Existing folder found, deleting...")
-            log_callback(f"   Deleting: {os.path.basename(folder_path)}")
+        log("EMPTY_LINE")
+        log("BACKUP_DELETING_FOLDER")
+        log("BACKUP_DELETING_NAME", name=os.path.basename(folder_path))
         
         try:
             shutil.rmtree(folder_path)
-            if log_callback:
-                log_callback(f"   Folder deleted successfully")
-                log_callback("")
+            log("BACKUP_DELETED")
+            log("EMPTY_LINE")
             return True
         except Exception as e:
-            if log_callback:
-                log_callback(f"   Could not delete folder: {e}")
-                log_callback("")
+            log("BACKUP_DELETE_FAILED", error=str(e))
+            log("EMPTY_LINE")
             return False
     else:
         # Create numbered backup
@@ -61,20 +56,17 @@ def backup_existing_folder(
                 break
             backup_number += 1
         
-        if log_callback:
-            log_callback("")
-            log_callback("Existing folder found, creating backup...")
-            log_callback(f"   Renaming: {base_name}")
-            log_callback(f"         to: {backup_name}")
+        log("EMPTY_LINE")
+        log("BACKUP_CREATING")
+        log("BACKUP_RENAME_FROM", old_name=base_name)
+        log("BACKUP_RENAME_TO", new_name=backup_name)
         
         try:
             os.rename(folder_path, backup_path)
-            if log_callback:
-                log_callback(f"   Backup created successfully")
-                log_callback("")
+            log("BACKUP_SUCCESS")
+            log("EMPTY_LINE")
             return True
         except Exception as e:
-            if log_callback:
-                log_callback(f"   Could not create backup: {e}")
-                log_callback("")
+            log("BACKUP_CREATE_FAILED", error=str(e))
+            log("EMPTY_LINE")
             return False

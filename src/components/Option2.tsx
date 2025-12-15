@@ -113,6 +113,15 @@ export default function Option2() {
     }
   };
 
+  // Helper for class validation
+  const requireClass = (): boolean => {
+    if (!selectedClass) {
+      addLog('❌ Please select a class first');
+      return false;
+    }
+    return true;
+  };
+
   // Get theme styles from hook
   const { metalButtonClass, metalButtonStyle } = useThemeStyles();
 
@@ -220,10 +229,7 @@ export default function Option2() {
 
   // Process quizzes
   const handleProcessQuizzes = async () => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
 
     setProcessing(true);
     addLog('🔍 Searching for assignment ZIP in Downloads...');
@@ -232,7 +238,7 @@ export default function Option2() {
       const result = await processQuizzes(drive, selectedClass, addLog);
       
       if (result.success) {
-        addLog('✅ Quiz processing completed!');
+        // Success message already logged by backend - don't duplicate
       } else if (result.error === 'Multiple ZIP files found') {
         setZipFiles(result.zip_files || []);
         setZipSelectionMode('quiz');
@@ -261,7 +267,7 @@ export default function Option2() {
       const result = await processSelectedQuiz(drive, selectedClass, zipPath, addLog);
       
       if (result.success) {
-        addLog('✅ Quiz processing completed!');
+        // Success message already logged by backend - don't duplicate
         // Use combined PDF name if available, otherwise fall back to assignment name
         const displayName = result.combined_pdf_path 
           ? result.combined_pdf_path.split('\\').pop()?.replace('.pdf', '') || result.assignment_name
@@ -326,10 +332,7 @@ export default function Option2() {
 
   // Process completion
   const handleProcessCompletion = async () => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
 
     setProcessingCompletion(true);
     addLog('🔍 Searching for assignment ZIP in Downloads...');
@@ -381,10 +384,7 @@ export default function Option2() {
 
   // Extract grades
   const handleExtractGrades = async () => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
 
     setExtracting(true);
     
@@ -410,10 +410,7 @@ export default function Option2() {
 
   // Handle PDF file selection for split
   const handleSelectPdfFile = async () => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
 
     try {
       // Use Electron dialog if available (for file path)
@@ -471,10 +468,7 @@ export default function Option2() {
   
   // Handle PDF upload and split (for browser mode)
   const handleSplitPdfUpload = async (file: File) => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
 
     setSplitting(true);
     addLog('📦 Starting PDF split and rezip...');
@@ -497,10 +491,7 @@ export default function Option2() {
 
   // Split PDF and rezip
   const handleSplitPdf = async (assignmentName: string | null = null, pdfPath: string | null = null) => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
 
     // Check if we have an uploaded file (browser mode) instead of a path
     if (!pdfPath && uploadedPdfFile && uploadedPdfFile.name) {
@@ -544,10 +535,7 @@ export default function Option2() {
 
   // Open folder (grade processing folder)
   const handleOpenFolder = async () => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
     
     try {
       const result = await openFolder(drive, selectedClass, addLog);
@@ -568,10 +556,7 @@ export default function Option2() {
 
   // Open class roster folder (not the processing folder)
   const handleOpenClassRosterFolder = async () => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
     
     try {
       // Open class roster folder directly (not the processing folder)
@@ -589,10 +574,7 @@ export default function Option2() {
 
   // Clear all data
   const handleClearAllData = async () => {
-    if (!selectedClass) {
-      addLog('❌ Please select a class first');
-      return;
-    }
+    if (!requireClass()) return;
 
     // Check if delete archived data is selected
     if (deleteArchivedData) {
@@ -648,12 +630,9 @@ export default function Option2() {
           setClearing(true);
           
           try {
-            addLog(`🗑️ Clearing data for: ${assignmentName}...`);
-            
             const result = await clearAllData(drive, selectedClass, assignmentName, saveFoldersAndPdf, addLog);
             
             if (result.success) {
-              addLog('✅ Data cleared successfully!');
               // Clear the last processed assignment
               setLastProcessedAssignment(null);
             } else {
@@ -762,28 +741,19 @@ export default function Option2() {
         setClearing(true);
         
         try {
-          addLog(`🗑️ Clearing ${assignmentsList.length} assignment(s)...`);
-          addLog('⏳ This may take a moment...');
-          
           let successCount = 0;
           let failCount = 0;
           
           for (const assignmentName of assignmentsList) {
-            addLog(`📂 Processing: ${assignmentName}...`);
-            
             const result = await clearAllData(drive, selectedClass, assignmentName as string, saveFoldersAndPdf, addLog);
             
             if (result.success) {
               successCount++;
-              addLog(`  ✅ Cleared successfully`);
             } else {
               failCount++;
               displayError(`  ❌ Failed: ${result.error || 'Unknown error'}`);
             }
           }
-          
-          addLog('');
-          addLog(`✅ Cleared ${successCount} assignment(s) successfully${failCount > 0 ? `, ${failCount} failed` : ''}`);
           
           // Clear the last processed assignment if it was cleared
           if (lastProcessedAssignment && selectedAssignments.has(lastProcessedAssignment.name)) {

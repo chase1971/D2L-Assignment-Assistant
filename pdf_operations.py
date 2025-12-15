@@ -4,7 +4,7 @@
 import os
 import re
 from io import BytesIO
-from typing import Optional, Callable, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple
 
 # Third-party
 import pandas as pd
@@ -17,6 +17,7 @@ from grading_constants import (
     NAME_MATCH_THRESHOLD_MEDIUM, NAME_MATCH_THRESHOLD_LOW
 )
 from name_matching import names_match_fuzzy
+from user_messages import log
 
 # Try for watermarking
 try:
@@ -56,15 +57,13 @@ def normalize_pdf_with_pypdf(page) -> None:
 def create_combined_pdf(
     pdf_paths: List[str], 
     name_map: Dict[str, str], 
-    output_path: str, 
-    log_callback: Optional[Callable] = None
+    output_path: str
 ) -> str:
     """Create a single combined PDF with watermarks."""
     if not pdf_paths:
         raise Exception("Oops. You've chosen the wrong file or class. Try again.")
     
-    if log_callback:
-        log_callback("")
+    log("EMPTY_LINE")
     
     writer = PdfWriter()
     
@@ -90,18 +89,16 @@ def create_combined_pdf(
                     _add_watermark(page, name, page_num, num_pages)
                 writer.add_page(page)
         except Exception as e:
-            if log_callback:
-                log_callback(f"   Error processing {name}: {e}")
+            log("PDF_ERROR_PROCESSING", name=name, error=str(e))
     
     _set_pdf_open_action(writer)
     
     with open(output_path, "wb") as f:
         writer.write(f)
     
-    if log_callback:
-        log_callback("")
-        log_callback(f"✅ Combined PDF created!")
-        log_callback("")
+    log("EMPTY_LINE")
+    log("PDF_COMBINED_SUCCESS")
+    log("EMPTY_LINE")
     
     return output_path
 
@@ -145,34 +142,30 @@ def _set_pdf_open_action(writer: PdfWriter) -> None:
 def split_combined_pdf(
     combined_pdf_path: str, 
     import_df: pd.DataFrame, 
-    extraction_folder: str, 
-    log_callback: Optional[Callable] = None
+    extraction_folder: str
 ) -> int:
     """Split a combined PDF back into individual student PDFs."""
-    if log_callback:
-        log_callback("")
-        log_callback("-" * 40)
-        log_callback("SPLITTING COMBINED PDF")
-        log_callback("-" * 40)
+    log("EMPTY_LINE")
+    log("SEPARATOR_LINE")
+    log("PDF_SPLITTING_HEADER")
+    log("SEPARATOR_LINE")
     
     try:
         reader = PdfReader(combined_pdf_path)
         total_pages = len(reader.pages)
         
-        if log_callback:
-            log_callback(f"   Combined PDF has {total_pages} pages")
-            log_callback(f"   Extracting student names from PDF...")
+        log("PDF_TOTAL_PAGES", pages=total_pages)
+        log("PDF_EXTRACTING_NAMES")
         
         # Extract names from pages
-        extracted_names = _extract_names_from_pages(reader, total_pages, log_callback)
+        extracted_names = _extract_names_from_pages(reader, total_pages)
         
-        if log_callback:
-            log_callback(f"   Extracted {len(extracted_names)} names from PDF")
-            log_callback(f"   First 10 names found:")
-            for i, name in enumerate(extracted_names[:10], 1):
-                log_callback(f"      {i:2d}. {name}")
-            if len(extracted_names) > 10:
-                log_callback(f"      ... and {len(extracted_names) - 10} more")
+        log("PDF_EXTRACTED_COUNT", count=len(extracted_names))
+        log("PDF_FIRST_NAMES_HEADER")
+        for i, name in enumerate(extracted_names[:10], 1):
+            log("PDF_NAME_ITEM", num=i, name=name)
+        if len(extracted_names) > 10:
+            log("PDF_MORE_NAMES", count=len(extracted_names) - 10)
         
         # Build name map from import file
         import_name_map = _build_import_name_map(import_df)
@@ -180,32 +173,29 @@ def split_combined_pdf(
         # Process students
         students_processed = _process_all_students(
             extracted_names, reader, total_pages, extraction_folder, 
-            import_name_map, log_callback
+            import_name_map
         )
         
-        if log_callback:
-            log_callback("")
-            log_callback(f"Successfully split PDF for {students_processed} students")
-            log_callback("")
+        log("EMPTY_LINE")
+        log("PDF_SPLIT_SUCCESS", count=students_processed)
+        log("EMPTY_LINE")
         
         return students_processed
         
     except Exception as e:
-        if log_callback:
-            log_callback(f"Error splitting combined PDF: {e}")
+        log("PDF_SPLIT_ERROR", error=str(e))
         raise
 
 
 def _extract_names_from_pages(
     reader: PdfReader, 
-    total_pages: int, 
-    log_callback: Optional[Callable]
+    total_pages: int
 ) -> List[str]:
     """Extract student names from each PDF page."""
     extracted_names = []
     
     for page_num in range(total_pages):
-        name = _extract_name_from_page(reader, page_num, log_callback)
+        name = _extract_name_from_page(reader, page_num)
         extracted_names.append(name)
     
     return extracted_names
@@ -213,8 +203,7 @@ def _extract_names_from_pages(
 
 def _extract_name_from_page(
     reader: PdfReader, 
-    page_num: int, 
-    log_callback: Optional[Callable]
+    page_num: int
 ) -> str:
     """Extract student name from a single PDF page."""
     try:
@@ -288,8 +277,7 @@ def _process_all_students(
     reader: PdfReader,
     total_pages: int,
     extraction_folder: str,
-    import_name_map: Dict[str, str],
-    log_callback: Optional[Callable]
+    import_name_map: Dict[str, str]
 ) -> int:
     """Process all students and write their PDFs."""
     students_processed = 0
@@ -310,7 +298,7 @@ def _process_all_students(
             if current_student and student_pages:
                 success = _process_student_pdf(
                     current_student, student_pages, reader, total_pages,
-                    extraction_folder, import_name_map, log_callback
+                    extraction_folder, import_name_map
                 )
                 if success:
                     students_processed += 1
@@ -324,7 +312,7 @@ def _process_all_students(
     if current_student and student_pages:
         success = _process_student_pdf(
             current_student, student_pages, reader, total_pages,
-            extraction_folder, import_name_map, log_callback
+            extraction_folder, import_name_map
         )
         if success:
             students_processed += 1
@@ -378,20 +366,17 @@ def _process_student_pdf(
     reader: PdfReader,
     total_pages: int,
     extraction_folder: str,
-    import_name_map: Dict[str, str],
-    log_callback: Optional[Callable]
+    import_name_map: Dict[str, str]
 ) -> bool:
     """Process a student's pages and write to their folder. Returns success."""
     student_folder = _find_student_folder(student_name, extraction_folder)
     
     if not student_folder:
-        if log_callback:
-            log_callback(f"   Could not find folder for: {student_name}")
+        log("PDF_NO_FOLDER_FOR", name=student_name)
         return False
     
-    if log_callback:
-        log_callback(f"   Processing {student_name}: {len(student_pages)} pages")
-        log_callback(f"      Found folder: {os.path.basename(student_folder)}")
+    log("PDF_PROCESSING_STUDENT", name=student_name, pages=len(student_pages))
+    log("PDF_FOUND_FOLDER", folder=os.path.basename(student_folder))
     
     # Create PDF with student's pages
     writer = PdfWriter()
@@ -404,20 +389,17 @@ def _process_student_pdf(
     original_pdfs = [f for f in files if f.lower().endswith(".pdf")]
     
     if not original_pdfs:
-        if log_callback:
-            log_callback(f"   No PDF found in {student_name}'s folder")
+        log("PDF_NO_PDF_IN_FOLDER", name=student_name)
         return False
     
     target_pdf = os.path.join(student_folder, original_pdfs[0])
     
-    if log_callback:
-        log_callback(f"      Replacing: {original_pdfs[0]}")
+    log("PDF_REPLACING", filename=original_pdfs[0])
     
     with open(target_pdf, "wb") as f:
         writer.write(f)
     
-    if log_callback:
-        log_callback(f"   {student_name}: {len(student_pages)} pages → {original_pdfs[0]}")
+    log("PDF_STUDENT_COMPLETE", name=student_name, pages=len(student_pages), filename=original_pdfs[0])
     
     return True
 

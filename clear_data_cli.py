@@ -14,7 +14,7 @@ import re
 import subprocess
 from glob import glob
 from config_reader import get_rosters_path
-from typing import List, Dict, Tuple
+from user_messages import log
 
 
 def extract_class_code(class_folder_name: str) -> str:
@@ -116,7 +116,7 @@ def format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
-def list_processing_folders(class_folder_path: str) -> List[Dict[str, str]]:
+def list_processing_folders(class_folder_path: str) -> list[dict[str, str]]:
     """
     List all 'grade processing [Assignment]' and 'archived [Assignment]' folders in the class folder.
     
@@ -156,17 +156,17 @@ def list_processing_folders(class_folder_path: str) -> List[Dict[str, str]]:
     return folders
 
 
-def clear_all_archived_data(class_folder_path: str) -> Tuple[int, List[str]]:
+def clear_all_archived_data(class_folder_path: str) -> int:
     """
     Clear all 'archived [Assignment]' folders in the class folder.
     
     Returns:
-        Tuple of (deleted_count, logs)
+        deleted_count
     """
     if not os.path.exists(class_folder_path):
-        return 0, ["Class folder not found"]
+        log("ERR_NO_FOLDER")
+        return 0
     
-    logs = []
     deleted_count = 0
     pattern = re.compile(r'^archived (.+)$', re.IGNORECASE)
     
@@ -183,14 +183,14 @@ def clear_all_archived_data(class_folder_path: str) -> Tuple[int, List[str]]:
             
             if safe_remove_tree(folder_path):
                 deleted_count += 1
-                logs.append(f"✅ Deleted: {folder_name}")
+                log("CLEAR_DELETED", folder_name=folder_name)
             else:
-                logs.append(f"❌ Failed to delete: {folder_name}")
+                log("ERR_CLEAR_FAILED_DELETE")
     
-    return deleted_count, logs
+    return deleted_count
 
 
-def clear_assignment_data(folder_path: str, save_mode: bool = False) -> Tuple[bool, str]:
+def clear_assignment_data(folder_path: str, save_mode: bool = False) -> bool:
     """
     Clear data with optional selective preservation.
     
@@ -199,10 +199,11 @@ def clear_assignment_data(folder_path: str, save_mode: bool = False) -> Tuple[bo
         save_mode: If True, keep unzipped folders and combined PDF, rename to 'archived'
     
     Returns:
-        Tuple of (success, message)
+        success status
     """
     if not os.path.exists(folder_path):
-        return False, "Folder not found"
+        log("ERR_NO_FOLDER")
+        return False
     
     folder_name = os.path.basename(folder_path)
     parent_folder = os.path.dirname(folder_path)
@@ -243,17 +244,22 @@ def clear_assignment_data(folder_path: str, save_mode: bool = False) -> Tuple[bo
             
             try:
                 os.rename(folder_path, new_folder_path)
-                return True, f"Archived to: {new_folder_name}"
+                log("CLEAR_ARCHIVED_TO", folder_name=new_folder_name)
+                return True
             except Exception as e:
-                return False, f"Failed to rename: {str(e)}"
+                log("ERR_CLEAR_FAILED_RENAME", error=str(e))
+                return False
         
-        return True, "Selective clear completed"
+        log("CLEAR_SELECTIVE_COMPLETE")
+        return True
     else:
         # Full clear: Delete entire folder
         if safe_remove_tree(folder_path):
-            return True, f"Deleted: {folder_name}"
+            log("CLEAR_DELETED", folder_name=folder_name)
+            return True
         else:
-            return False, "Failed to delete folder (may be in use)"
+            log("ERR_CLEAR_FAILED_DELETE")
+            return False
 
 
 def main():
@@ -316,8 +322,7 @@ def main():
         class_name = sys.argv[2]
         
         try:
-            logs = []
-            logs.append(f"🗑️ Clearing all archived data for {class_name}")
+            log("CLEAR_ARCHIVED", class_name=class_name)
             
             rosters_path = get_rosters_path()
             
@@ -330,31 +335,27 @@ def main():
                         break
             
             if not class_folder:
-                raise Exception(f"Class folder not found: {class_name}")
+                log("ERR_NO_FOLDER")
+                sys.exit(1)
             
             # Clear all archived folders
-            deleted_count, archive_logs = clear_all_archived_data(class_folder)
-            logs.extend(archive_logs)
+            deleted_count = clear_all_archived_data(class_folder)
             
             if deleted_count > 0:
-                logs.append(f"✅ Cleared {deleted_count} archived folder(s)")
+                log("CLEAR_ARCHIVED_SUCCESS", count=deleted_count)
             else:
-                logs.append("ℹ️ No archived folders found")
-            
-            # Output logs
-            for log in logs:
-                print(log)
+                log("CLEAR_NO_ARCHIVED")
             
             sys.exit(0)
             
         except Exception as e:
             error_str = str(e).lower()
             if "being used by another process" in error_str or "locked" in error_str:
-                print("❌ The file is being used by another process")
+                log("ERR_FILE_LOCKED")
             elif "permission denied" in error_str:
-                print("❌ Cannot access file - permission denied")
+                log("ERR_PERMISSION")
             else:
-                print(f"❌ {str(e)}")
+                log("ERR_GENERIC", error=str(e))
             sys.exit(1)
     
     # Normal clear operation
@@ -371,8 +372,7 @@ def main():
     save_mode = "--save-folders-and-pdf" in sys.argv
     
     try:
-        logs = []
-        logs.append(f"🗑️ Starting cleanup for {class_name}")
+        log("CLEAR_STARTING", class_name=class_name)
         
         rosters_path = get_rosters_path()
         
@@ -385,7 +385,8 @@ def main():
                     break
         
         if not class_folder:
-            raise Exception(f"Class folder not found: {class_name}")
+            log("ERR_NO_FOLDER")
+            sys.exit(1)
         
         # Find the target processing folder
         if assignment_name:
@@ -438,39 +439,38 @@ def main():
                 if matching_folders:
                     # Use the first matching folder
                     processing_folder = matching_folders[0]
-                    logs.append(f"⚠️  Found matching folder: {os.path.basename(processing_folder)}")
+                    log("CLEAR_FOUND_MATCHING", folder_name=os.path.basename(processing_folder))
                 else:
-                    raise Exception(f"Processing folder not found for assignment: {assignment_name}\n   Tried: {os.path.basename(processing_folder)}")
+                    log("ERR_CLEAR_FOLDER_NOT_FOUND", 
+                        assignment=assignment_name, 
+                        path=os.path.basename(processing_folder))
+                    sys.exit(1)
         else:
-            raise Exception("Assignment name required for clear operation")
+            log("ERR_NO_ASSIGNMENTS")
+            sys.exit(1)
         
         # Clear the data
-        logs.append(f"Target folder: {os.path.basename(processing_folder)}")
-        logs.append(f"Mode: {'Selective (save folders and PDF)' if save_mode else 'Full delete'}")
+        log("CLEAR_TARGET_FOLDER", folder_name=os.path.basename(processing_folder))
+        if save_mode:
+            log("CLEAR_MODE_SELECTIVE")
+        else:
+            log("CLEAR_MODE_FULL")
         
-        success, message = clear_assignment_data(processing_folder, save_mode)
+        success = clear_assignment_data(processing_folder, save_mode)
         
         if success:
-            logs.append(f"✅ {message}")
-            logs.append("✅ Cleanup completed!")
+            log("CLEAR_SUCCESS")
         else:
-            logs.append(f"❌ {message}")
-        
-        # Output logs
-        for log in logs:
-            print(log)
-        
-        if not success:
             sys.exit(1)
         
     except Exception as e:
         error_str = str(e).lower()
         if "being used by another process" in error_str or "locked" in error_str:
-            print("❌ The file is being used by another process")
+            log("ERR_FILE_LOCKED")
         elif "permission denied" in error_str:
-            print("❌ Cannot access file - permission denied")
+            log("ERR_PERMISSION")
         else:
-            print(f"❌ {str(e)}")
+            log("ERR_GENERIC", error=str(e))
         sys.exit(1)
 
 

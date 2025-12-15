@@ -19,6 +19,7 @@ from import_file_handler import load_import_file, update_import_file
 from pdf_operations import create_combined_pdf, split_combined_pdf
 from submission_processor import process_submissions
 from file_utils import open_file_with_default_app
+from user_messages import log, format_msg
 
 
 # ============================================================================
@@ -26,21 +27,21 @@ from file_utils import open_file_with_default_app
 # ============================================================================
 
 
-def make_error_response(error_msg: str, logs: Optional[list] = None) -> Dict[str, Any]:
+def make_error_response(message_id: str, **kwargs) -> Dict[str, Any]:
     """
-    Create a standardized error response dict.
-
+    Create a standardized error response dict using the message catalog.
+    
     Args:
-        error_msg: The error message to include
-        logs: Optional existing logs to append the error to
-
+        message_id: The message ID from the catalog
+        **kwargs: Format variables for the message
+    
     Returns:
-        Dict with success=False, error message, and logs
+        Dict with success=False and formatted error message
     """
+    log(message_id, **kwargs)  # Log the error to stdout
     return {
         "success": False,
-        "error": error_msg,
-        "logs": (logs or []) + [error_msg]
+        "error": format_msg(message_id, **kwargs)
     }
 
 
@@ -241,16 +242,11 @@ class ProcessingResult:
         self.total_students = 0
 
 
-def find_latest_zip(download_folder: str, log_callback: Optional[Callable[[str], None]] = None) -> Tuple[Optional[str], Optional[str]]:
+def find_latest_zip(download_folder: str) -> Tuple[Optional[str], Optional[str]]:
     """Find the latest ZIP file in downloads"""
-    if log_callback:
-        log_callback("Looking for quiz files in Downloads...")
-    
     zip_files = glob(os.path.join(download_folder, "*.zip"))
     
     if not zip_files:
-        if log_callback:
-            log_callback("No quiz files found in Downloads")
         return None, None
     
     # Sort by modification time (newest first)
@@ -259,12 +255,6 @@ def find_latest_zip(download_folder: str, log_callback: Optional[Callable[[str],
     
     # Extract assignment name from ZIP filename
     assignment_name = extract_assignment_name_from_zip(chosen_zip)
-    
-    if log_callback:
-        log_callback("")
-        log_callback(f"Found quiz file: {os.path.basename(chosen_zip)}")
-        log_callback(f"Assignment: {assignment_name}")
-        log_callback("")
     
     return chosen_zip, assignment_name
 
@@ -323,18 +313,11 @@ def validate_zip_structure(zip_path: str) -> bool:
         return False
 
 
-def extract_zip_file(zip_path: str, extraction_folder: str, log_callback: Optional[Callable[[str], None]] = None) -> int:
+def extract_zip_file(zip_path: str, extraction_folder: str) -> int:
     """Extract ZIP file to the grade processing folder"""
-    if log_callback:
-        log_callback(f"Validating ZIP file structure...")
-    
     # Validate ZIP structure BEFORE extraction
     if not validate_zip_structure(zip_path):
         raise Exception("Zip file does not contain student assignments")
-    
-    if log_callback:
-        log_callback(f"✅ ZIP structure validated")
-        log_callback(f"Extracting to: {extraction_folder}")
     
     # Create the extraction folder if it doesn't exist (DON'T delete existing)
     os.makedirs(extraction_folder, exist_ok=True)
@@ -349,9 +332,6 @@ def extract_zip_file(zip_path: str, extraction_folder: str, log_callback: Option
                 with zf.open('index.html') as index_file:
                     with open(index_file_path, 'wb') as f:
                         f.write(index_file.read())
-                if log_callback:
-                    log_callback("   Preserved original index.html")
-            
             # Extract all files
             zf.extractall(extraction_folder)
     except zipfile.BadZipFile:
@@ -368,13 +348,6 @@ def extract_zip_file(zip_path: str, extraction_folder: str, log_callback: Option
                        if os.path.isdir(os.path.join(extraction_folder, d)) 
                        and d != "PDFs"])
     
-    if log_callback:
-        log_callback("")
-        log_callback(f"✅ Extracted {folder_count} student folders")
-        if index_file_path:
-            log_callback(f"   Preserved index.html from original ZIP")
-        log_callback("")
-    
     return folder_count
 
 
@@ -383,7 +356,7 @@ def extract_zip_file(zip_path: str, extraction_folder: str, log_callback: Option
 # ============================================================================
 
 
-def create_combined_pdf_only(drive_letter, class_folder_name, zip_path, log_callback=None):
+def create_combined_pdf_only(drive_letter, class_folder_name, zip_path):
     """Create combined PDF without updating grades - just extract and combine"""
     result = ProcessingResult()
     
@@ -408,23 +381,14 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path, log_call
         pdf_output_folder = os.path.join(processing_folder, "PDFs")
         unreadable_folder = os.path.join(processing_folder, "unreadable")
         
-        if log_callback:
-            log_callback(f"Drive: {drive_letter}:")
-            log_callback(f"Class: {class_folder_name}")
-            log_callback(f"Processing folder: {processing_folder}")
-            log_callback("-" * 60)
-        
         # Backup existing processing folder if it exists (default to backup, not overwrite)
-        backup_existing_folder(processing_folder, log_callback, overwrite=False)
-        
-        if log_callback:
-            log_callback(f"Assignment: {assignment_name}")
+        backup_existing_folder(processing_folder, overwrite=False)
         
         # Step 1: Extract ZIP to unzipped folders
-        extract_zip_file(zip_path, unzipped_folder, log_callback)
+        extract_zip_file(zip_path, unzipped_folder)
         
         # Step 2: Load Import File (skip validation for process quizzes)
-        import_df, import_file_path = load_import_file(class_folder_path, log_callback, skip_validation=True)
+        import_df, import_file_path = load_import_file(class_folder_path, skip_validation=True)
         if import_df is None:
             raise Exception("Could not load Import File.csv")
         
@@ -433,17 +397,14 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path, log_call
         
         # Step 3: Process submissions (extract PDFs)
         submitted, unreadable, no_submission, pdf_paths, name_map, student_errors, page_counts = process_submissions(
-            unzipped_folder, import_df, pdf_output_folder, unreadable_folder, log_callback, is_completion_process=False
+            unzipped_folder, import_df, pdf_output_folder, unreadable_folder, is_completion_process=False
         )
         
         # Step 4: Create combined PDF (named after assignment, versioned if exists)
         class_code = extract_class_code(class_folder_name)
         combined_pdf_path = get_versioned_pdf_path(pdf_output_folder, assignment_name, class_code)
-        create_combined_pdf(pdf_paths, name_map, combined_pdf_path, log_callback)
+        create_combined_pdf(pdf_paths, name_map, combined_pdf_path)
         result.combined_pdf_path = combined_pdf_path
-        
-        if log_callback:
-            log_callback(f"   PDF saved as: {os.path.basename(combined_pdf_path)}")
         
         # Store results (but don't update grades)
         result.submitted = [name_map[pdf] for pdf in pdf_paths]
@@ -454,17 +415,9 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path, log_call
                                import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
                                for u in no_submission]
         
-        if log_callback:
-            log_callback("")
-            log_callback("✅ Combined PDF created!")
-            log_callback("")
-        
         return result
     
     except Exception as e:
-        if log_callback:
-            log_callback("")
-            log_callback(format_error_message(e))
         raise
 
 
@@ -472,7 +425,6 @@ def _setup_processing_environment(
     drive_letter: str,
     class_folder_name: str,
     assignment_name: str,
-    log_callback: Optional[Callable] = None,
     overwrite: bool = False
 ) -> Tuple[str, str, str, str, str]:
     """
@@ -482,7 +434,6 @@ def _setup_processing_environment(
         drive_letter: Drive letter (unused but kept for consistency)
         class_folder_name: Name of class folder
         assignment_name: Name of the assignment being processed
-        log_callback: Optional callback for logging
         overwrite: If True, delete existing folder. If False, create numbered backup.
     
     Returns:
@@ -503,14 +454,8 @@ def _setup_processing_environment(
     pdf_output_folder = os.path.join(processing_folder, "PDFs")
     unreadable_folder = os.path.join(processing_folder, "unreadable")
     
-    if log_callback:
-        log_callback(f"Drive: {drive_letter}:")
-        log_callback(f"Class: {class_folder_name}")
-        log_callback(f"Processing folder: {processing_folder}")
-        log_callback("-" * 60)
-    
     # Backup existing processing folder if it exists
-    backup_existing_folder(processing_folder, log_callback, overwrite=overwrite)
+    backup_existing_folder(processing_folder, overwrite=overwrite)
     
     return class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder
 
@@ -521,7 +466,6 @@ def _extract_and_process_submissions(
     import_df: pd.DataFrame,
     pdf_output_folder: str,
     unreadable_folder: str,
-    log_callback: Optional[Callable] = None,
     is_completion_process: bool = False
 ) -> Tuple[Set[str], Set[str], Set[str], List[str], Dict[str, str], List[str], Dict[str, int]]:
     """
@@ -533,19 +477,18 @@ def _extract_and_process_submissions(
         import_df: DataFrame with roster data
         pdf_output_folder: Folder to save individual PDFs
         unreadable_folder: Folder for unreadable PDFs
-        log_callback: Optional callback for logging
         is_completion_process: Whether this is completion processing
     
     Returns:
         Tuple from process_submissions: (submitted, unreadable, no_submission, pdf_paths, name_map, student_errors, page_counts)
     """
     # Extract ZIP to unzipped folders subfolder
-    extract_zip_file(zip_path, unzipped_folder, log_callback)
+    extract_zip_file(zip_path, unzipped_folder)
     
     # Process submissions from unzipped folders
     return process_submissions(
         unzipped_folder, import_df, pdf_output_folder, unreadable_folder,
-        log_callback, is_completion_process=is_completion_process
+        is_completion_process=is_completion_process
     )
 
 
@@ -554,8 +497,7 @@ def _create_and_save_combined_pdf(
     name_map: Dict[str, str],
     assignment_name: str,
     pdf_output_folder: str,
-    class_folder_name: str = "",
-    log_callback: Optional[Callable] = None
+    class_folder_name: str = ""
 ) -> str:
     """
     Create and save combined PDF with versioning.
@@ -566,7 +508,6 @@ def _create_and_save_combined_pdf(
         assignment_name: Name of assignment
         pdf_output_folder: Folder to save combined PDF
         class_folder_name: Class folder name to extract class code from
-        log_callback: Optional callback for logging
     
     Returns:
         Path to created combined PDF
@@ -581,10 +522,7 @@ def _create_and_save_combined_pdf(
     class_code = extract_class_code(class_folder_name) if class_folder_name else ""
     
     combined_pdf_path = get_versioned_pdf_path(pdf_output_folder, assignment_name, class_code)
-    create_combined_pdf(pdf_paths, name_map, combined_pdf_path, log_callback)
-    
-    if log_callback:
-        log_callback(f"   PDF saved as: {os.path.basename(combined_pdf_path)}")
+    create_combined_pdf(pdf_paths, name_map, combined_pdf_path)
     
     return combined_pdf_path
 
@@ -592,8 +530,7 @@ def _create_and_save_combined_pdf(
 def _setup_import_file_column(
     import_df: pd.DataFrame,
     import_file_path: str,
-    assignment_name: str,
-    log_callback: Optional[Callable] = None
+    assignment_name: str
 ) -> None:
     """
     Set up assignment column in Import File (for quiz processing).
@@ -604,12 +541,7 @@ def _setup_import_file_column(
         import_df: DataFrame to update
         import_file_path: Path to save CSV
         assignment_name: Name of assignment
-        log_callback: Optional callback for logging
     """
-    if log_callback:
-        log_callback("")
-        log_callback("Setting up Import File column...")
-    
     try:
         # Create column name
         column_name = f"{assignment_name} Points Grade"
@@ -623,13 +555,8 @@ def _setup_import_file_column(
                 old_name = columns[REQUIRED_COLUMNS_COUNT - 1]
                 columns[REQUIRED_COLUMNS_COUNT - 1] = column_name
                 import_df.columns = columns
-                if log_callback:
-                    log_callback(f"   Created column: '{column_name}'")
             else:
                 import_df[column_name] = ""
-                if log_callback:
-                    log_callback(f"   Added column: '{column_name}'")
-            
             # Initialize all cells as blank
             import_df[column_name] = ""
             
@@ -638,29 +565,20 @@ def _setup_import_file_column(
                 import_df.to_csv(import_file_path, index=False)
             except PermissionError:
                 friendly_msg = "You might have the import file open, please close and try again!"
-                if log_callback:
-                    log_callback(f"   ❌ {friendly_msg}")
                 raise Exception(friendly_msg)
             except OSError as e:
                 # Check if it's a permission denied error (errno 13)
                 if e.errno == 13:
                     friendly_msg = "You might have the import file open, please close and try again!"
-                    if log_callback:
-                        log_callback(f"   ❌ {friendly_msg}")
                     raise Exception(friendly_msg)
                 else:
                     raise
-            if log_callback:
-                log_callback(f"   Import File ready for grade extraction")
-        else:
-            if log_callback:
-                log_callback(f"   Column already exists: '{column_name}'")
+        # If column already exists, nothing to do
+            
     except Exception as e:
-        if log_callback:
-            log_callback(f"   Could not setup Import File: {e}")
+        raise
 
-
-def run_reverse_process(drive_letter: str, class_folder_name: str, log_callback: Optional[Callable[[str], None]] = None, pdf_path: Optional[str] = None) -> ProcessingResult:
+def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Optional[str] = None) -> ProcessingResult:
     """Reverse process: Split combined PDF back into individual student PDFs"""
     result = ProcessingResult()
     
@@ -700,8 +618,6 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, log_callback:
                     # No class code, use old format
                     processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
 
-            if log_callback:
-                log_callback(f"Using provided PDF: {os.path.basename(combined_pdf_path)}")
         else:
             # No PDF path provided - find the most recent processing folder
             # Pattern matches both: "grade processing [CLASS_CODE] [ASSIGNMENT]" and "grade processing [ASSIGNMENT]"
@@ -729,12 +645,6 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, log_callback:
         unzipped_folder = os.path.join(processing_folder, "unzipped folders")
         pdf_output_folder = os.path.join(processing_folder, "PDFs")
         
-        if log_callback:
-            log_callback(f"Drive: {drive_letter}:")
-            log_callback(f"Class: {class_folder_name}")
-            log_callback(f"Processing folder: {processing_folder}")
-            log_callback("-" * 60)
-        
         # Find combined PDF if not already provided
         if not combined_pdf_path:
             if os.path.exists(pdf_output_folder):
@@ -751,11 +661,8 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, log_callback:
             else:
                 raise Exception(f"Combined PDF not found in: {pdf_output_folder}")
         
-        if log_callback:
-            log_callback(f"Found combined PDF: {os.path.basename(combined_pdf_path)}")
-        
         # Load Import File (skip validation for reverse process - we only need it for name mapping)
-        import_df, import_file_path = load_import_file(class_folder_path, log_callback, skip_validation=True)
+        import_df, import_file_path = load_import_file(class_folder_path, skip_validation=True)
         if import_df is None:
             raise Exception("Could not load Import File.csv")
         
@@ -765,28 +672,17 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, log_callback:
         
         # Split the combined PDF back into individual PDFs
         # The split_combined_pdf should place files in unzipped_folder (student folders)
-        students_processed = split_combined_pdf(combined_pdf_path, import_df, unzipped_folder, log_callback)
+        students_processed = split_combined_pdf(combined_pdf_path, import_df, unzipped_folder)
         
         result.submitted = [f"Student {i+1}" for i in range(students_processed)]
-        
-        if log_callback:
-            log_callback("")
-            log_callback("=" * 60)
-            log_callback("REVERSE PROCESSING COMPLETE!")
-            log_callback(f"Processed {students_processed} students")
-            log_callback("=" * 60)
-            log_callback("")
         
         return result
     
     except Exception as e:
-        if log_callback:
-            log_callback("")
-            log_callback(format_error_message(e))
         raise
 
 
-def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str, log_callback: Optional[Callable[[str], None]] = None) -> ProcessingResult:
+def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str) -> ProcessingResult:
     """
     Main quiz processing function.
     
@@ -803,7 +699,6 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
         drive_letter: Drive letter (for display purposes)
         class_folder_name: Name of class folder
         zip_path: Path to ZIP file containing student submissions
-        log_callback: Optional callback for logging messages
     
     Returns:
         ProcessingResult with submission status and file paths
@@ -811,23 +706,28 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
     Raises:
         Exception: If processing fails at any step
     """
+    from user_messages import log
+    
     result = ProcessingResult()
 
     try:
+        log("EMPTY_LINE")
+        log("SEPARATOR_LINE")
+        log("QUIZ_PROCESSING_HEADER")
+        log("SEPARATOR_LINE")
+        
         # Extract assignment name from ZIP filename FIRST
         assignment_name = extract_assignment_name_from_zip(zip_path)
         result.assignment_name = assignment_name
+        log("QUIZ_ASSIGNMENT", name=assignment_name)
 
         # Setup processing environment with assignment-specific folder
         class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder = _setup_processing_environment(
-            drive_letter, class_folder_name, assignment_name, log_callback
+            drive_letter, class_folder_name, assignment_name
         )
 
-        if log_callback:
-            log_callback(f"Assignment: {assignment_name}")
-
         # Load Import File (skip validation for process quizzes)
-        import_df, import_file_path = load_import_file(class_folder_path, log_callback, skip_validation=True)
+        import_df, import_file_path = load_import_file(class_folder_path, skip_validation=True)
         if import_df is None:
             raise Exception("Could not load Import File.csv")
         
@@ -836,27 +736,23 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
         
         # Extract ZIP and process submissions
         submitted, unreadable, no_submission, pdf_paths, name_map, student_errors, page_counts = _extract_and_process_submissions(
-            zip_path, unzipped_folder, import_df, pdf_output_folder, unreadable_folder, log_callback, is_completion_process=False
+            zip_path, unzipped_folder, import_df, pdf_output_folder, unreadable_folder, is_completion_process=False
         )
         
         # Create combined PDF
         combined_pdf_path = _create_and_save_combined_pdf(
-            pdf_paths, name_map, assignment_name, pdf_output_folder, class_folder_name, log_callback
+            pdf_paths, name_map, assignment_name, pdf_output_folder, class_folder_name
         )
         result.combined_pdf_path = combined_pdf_path
         
         # Setup Import File column
-        _setup_import_file_column(import_df, import_file_path, assignment_name, log_callback)
+        _setup_import_file_column(import_df, import_file_path, assignment_name)
         
         # Open the combined PDF for grading
         try:
-            if log_callback:
-                log_callback("")
-                log_callback("Opening combined PDF for manual grading...")
             open_file_with_default_app(combined_pdf_path)
         except Exception as e:
-            if log_callback:
-                log_callback(f"   Could not open PDF: {e}")
+            pass  # Silently fail if can't open PDF
         
         # Store results
         result.submitted = [name_map[pdf] for pdf in pdf_paths]
@@ -867,23 +763,13 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
                                import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
                                for u in no_submission]
         
-        if log_callback:
-            log_callback("")
-            log_callback("=" * 60)
-            log_callback("PROCESSING COMPLETE!")
-            log_callback("=" * 60)
-            log_callback("")
-        
         return result
     
     except Exception as e:
-        if log_callback:
-            log_callback("")
-            log_callback(format_error_message(e))
         raise
 
 
-def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: str, log_callback: Optional[Callable[[str], None]] = None, dont_override: bool = False) -> ProcessingResult:
+def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: str, dont_override: bool = False) -> ProcessingResult:
     """
     Completion processing function - auto-assigns 10 points to all submissions.
     
@@ -904,7 +790,6 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         drive_letter: Drive letter (for display purposes)
         class_folder_name: Name of class folder
         zip_path: Path to ZIP file containing student submissions
-        log_callback: Optional callback for logging messages
         dont_override: If True, add new column after column E instead of overriding it.
                        If False, reset to 6 columns and use column E (existing behavior).
     
@@ -918,49 +803,27 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
     
     try:
         # STEP 1: Validate ZIP file structure FIRST
-        if log_callback:
-            log_callback("")
-            log_callback("=" * 40)
-            log_callback("VALIDATION CHECKS")
-            log_callback("=" * 40)
-            log_callback("")
-            log_callback("📦 Step 1: Validating ZIP file structure...")
-        
         from zip_validator import validate_zip_structure
         is_valid_zip, zip_error = validate_zip_structure(zip_path)
         if not is_valid_zip:
             raise Exception(f"❌ ZIP validation failed: {zip_error}")
-        
-        if log_callback:
-            log_callback("✅ ZIP file structure is valid")
         
         # Get class folder path early for validation
         rosters_path = get_rosters_path()
         class_folder_path = os.path.join(rosters_path, class_folder_name)
         
         # STEP 2: Validate Import File structure
-        if log_callback:
-            log_callback("")
-            log_callback("📋 Step 2: Validating Import File structure...")
-        
         from import_file_handler import validate_import_file_early
         is_valid, error_msg = validate_import_file_early(class_folder_path)
         if not is_valid:
             raise Exception(f"❌ Import File validation failed: {error_msg}")
         
-        if log_callback:
-            log_callback("✅ Import File structure is valid")
-        
         # Load Import File for name validation
-        import_df, import_file_path = load_import_file(class_folder_path, log_callback=None)  # Don't log yet
+        import_df, import_file_path = load_import_file(class_folder_path)
         if import_df is None:
             raise Exception("Could not load Import File.csv")
         
         # STEP 3: Validate student names in ZIP match Import File
-        if log_callback:
-            log_callback("")
-            log_callback("👥 Step 3: Validating student names match Import File...")
-        
         from zip_validator import validate_student_names_match
         names_match, name_error, mismatches = validate_student_names_match(zip_path, import_df)
         if not names_match:
@@ -975,37 +838,26 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
                     error_parts.append(f"  ... and {len(mismatches) - 10} more")
             raise Exception("\n".join(error_parts))
         
-        if log_callback:
-            log_callback("✅ All student names match Import File")
-            log_callback("")
-            log_callback("=" * 40)
-            log_callback("VALIDATION COMPLETE - Starting Processing")
-            log_callback("=" * 40)
-            log_callback("")
-        
         # Extract assignment name from ZIP filename
         assignment_name = extract_assignment_name_from_zip(zip_path)
         result.assignment_name = assignment_name
 
         # Setup processing environment with assignment-specific folder
         class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder = _setup_processing_environment(
-            drive_letter, class_folder_name, assignment_name, log_callback
+            drive_letter, class_folder_name, assignment_name
         )
 
-        if log_callback:
-            log_callback(f"Assignment: {assignment_name}")
-        
         result.import_file_path = import_file_path
         result.total_students = len(import_df)
         
         # Extract ZIP and process submissions
         submitted, unreadable, no_submission, pdf_paths, name_map, student_errors, page_counts = _extract_and_process_submissions(
-            zip_path, unzipped_folder, import_df, pdf_output_folder, unreadable_folder, log_callback, is_completion_process=True
+            zip_path, unzipped_folder, import_df, pdf_output_folder, unreadable_folder, is_completion_process=True
         )
         
         # Create combined PDF
         combined_pdf_path = _create_and_save_combined_pdf(
-            pdf_paths, name_map, assignment_name, pdf_output_folder, class_folder_name, log_callback
+            pdf_paths, name_map, assignment_name, pdf_output_folder, class_folder_name
         )
         result.combined_pdf_path = combined_pdf_path
         
@@ -1019,7 +871,6 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
             unreadable, 
             no_submission,
             grades_map=None,  # No OCR grades - auto-assign 10 points
-            log_callback=log_callback,
             dont_override=dont_override
         )
         
@@ -1032,25 +883,7 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
                                import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
                                for u in no_submission]
         
-        if log_callback:
-            log_callback("")
-            log_callback(f"✅ Auto-assigned 10 points to {len(submitted)} submissions")
-            log_callback("✅ Completion processing completed!")
-            log_callback("")
-            
-            # Display student errors at the end in red
-            if student_errors:
-                log_callback("")
-                log_callback("❌ STUDENT ERRORS AND WARNINGS:")
-                for error in student_errors:
-                    log_callback(f"❌ {error}")
-            
-            log_callback("")
-        
         return result
     
     except Exception as e:
-        if log_callback:
-            log_callback("")
-            log_callback(format_error_message(e))
         raise

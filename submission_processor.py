@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 from datetime import datetime
-from typing import Optional, Callable, Dict, List, Tuple, Set, Any
+from typing import Optional, Dict, List, Tuple, Set, Any
 
 # Third-party
 import pandas as pd
@@ -13,6 +13,7 @@ from pypdf import PdfWriter, PdfReader
 
 # Local
 from grading_constants import PAGE_COUNT_WARNING_RATIO, MINIMUM_MATCH_RATE, MIN_UNMATCHED_COUNT
+from user_messages import log
 
 
 def process_submissions(
@@ -20,7 +21,6 @@ def process_submissions(
     import_df: pd.DataFrame,
     pdf_output_folder: str,
     unreadable_folder: str,
-    log_callback: Optional[Callable[[str], None]] = None,
     is_completion_process: bool = False
 ) -> Tuple[Set[str], Set[str], Set[str], List[str], Dict[str, str], List[str], Dict[str, int]]:
     """
@@ -29,11 +29,10 @@ def process_submissions(
     Returns:
         Tuple of (submitted, unreadable, no_submission, pdf_paths, name_map, student_errors, page_counts)
     """
-    if log_callback:
-        log_callback("")
-        log_callback("-" * 40)
-        log_callback("PROCESSING STUDENT SUBMISSIONS")
-        log_callback("-" * 40)
+    log("EMPTY_LINE")
+    log("SEPARATOR_LINE")
+    log("SUBMISSION_PROCESSING_HEADER")
+    log("SEPARATOR_LINE")
     
     # Prepare student data
     import_df["Last Name"] = import_df["Last Name"].str.strip().str.lower()
@@ -54,12 +53,16 @@ def process_submissions(
     _clear_old_pdfs(pdf_output_folder)
     
     # Group submissions by student, keeping only latest
-    submission_map = _build_submission_map(extraction_folder, log_callback)
+    submission_map, newer_submissions = _build_submission_map(extraction_folder)
     
-    if log_callback:
-        log_callback("")
-        log_callback(f"Found {len(submission_map)} unique students (after filtering duplicates)")
-        log_callback("")
+    log("EMPTY_LINE")
+    log("SUBMISSION_FOUND_UNIQUE", count=len(submission_map))
+    
+    # Log any duplicate submissions that were replaced
+    for name in newer_submissions:
+        log("SUBMISSION_NEWER_FOUND", name=name)
+    
+    log("EMPTY_LINE")
     
     # Process each submission
     unmatched_count = 0
@@ -67,18 +70,17 @@ def process_submissions(
         fp = os.path.join(extraction_folder, fld)
         
         # Match to roster
-        user, hit = _match_student_to_roster(name, import_df, log_callback)
+        user, hit = _match_student_to_roster(name, import_df)
         if not user:
             unmatched_count += 1
             student_errors.append(f"{name}: Could not match to roster")
-            if log_callback:
-                log_callback(f"   {name}: Could not match to roster")
+            log("SUBMISSION_NO_MATCH", name=name)
             continue
         
         # Process files
         result = _process_student_files(
             name, fp, user, pdf_output_folder,
-            is_completion_process, log_callback
+            is_completion_process
         )
         
         if result["status"] == "submitted":
@@ -103,11 +105,11 @@ def process_submissions(
     _move_unreadable_submissions(extraction_folder, import_df, unreadable, unreadable_folder)
     
     # Log summary
-    if multiple_pdf_students and log_callback:
-        log_callback("")
-        log_callback("Students who submitted multiple PDFs (combined automatically):")
+    if multiple_pdf_students:
+        log("EMPTY_LINE")
+        log("SUBMISSION_MULTIPLE_PDFS_HEADER")
         for student_name in multiple_pdf_students:
-            log_callback(f"   • {student_name}")
+            log("SUBMISSION_MULTIPLE_PDF_ITEM", name=student_name)
     
     # Flag students with fewer pages than average
     _check_page_counts(page_counts, student_errors)
@@ -153,11 +155,11 @@ def _parse_folder_timestamp(folder_name: str) -> Optional[datetime]:
 
 
 def _build_submission_map(
-    extraction_folder: str,
-    log_callback: Optional[Callable[[str], None]]
+    extraction_folder: str
 ) -> Dict[str, Tuple[str, Optional[datetime]]]:
     """Group submissions by student name, keeping only the latest."""
     submission_map = {}
+    newer_submissions = []  # Track which ones were replaced
     
     for fld in os.listdir(extraction_folder):
         fp = os.path.join(extraction_folder, fld)
@@ -175,14 +177,13 @@ def _build_submission_map(
             existing_folder, existing_timestamp = submission_map[name]
             if timestamp and existing_timestamp and timestamp > existing_timestamp:
                 submission_map[name] = (fld, timestamp)
-                if log_callback:
-                    log_callback(f"   {name}: Found newer submission, using that")
+                newer_submissions.append(name)  # Track for logging later
             elif timestamp and not existing_timestamp:
                 submission_map[name] = (fld, timestamp)
         else:
             submission_map[name] = (fld, timestamp)
     
-    return submission_map
+    return submission_map, newer_submissions
 
 
 def _match_standard_format(name: str, import_df: pd.DataFrame) -> pd.DataFrame:
@@ -239,8 +240,7 @@ def _match_hyphen_variations(name: str, import_df: pd.DataFrame) -> pd.DataFrame
 
 def _match_fuzzy_parts(
     name: str, 
-    import_df: pd.DataFrame, 
-    log_callback: Optional[Callable[[str], None]]
+    import_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
     Strategy 4: Fuzzy part matching (fallback).
@@ -272,9 +272,8 @@ def _match_fuzzy_parts(
         matching_rows.sort(key=lambda x: x[1], reverse=True)
         best_idx = matching_rows[0][0]
         hit = import_df.iloc[[best_idx]]
-        if log_callback:
-            roster_name = f"{hit.iloc[0]['First Name']} {hit.iloc[0]['Last Name']}"
-            log_callback(f"   {name}: Matched using name parts → {roster_name}")
+        roster_name = f"{hit.iloc[0]['First Name']} {hit.iloc[0]['Last Name']}"
+        log("SUBMISSION_NAME_PARTS_MATCH", name=name, roster_name=roster_name)
         return hit
     
     return pd.DataFrame()
@@ -282,8 +281,7 @@ def _match_fuzzy_parts(
 
 def _match_student_to_roster(
     name: str,
-    import_df: pd.DataFrame,
-    log_callback: Optional[Callable[[str], None]]
+    import_df: pd.DataFrame
 ) -> Tuple[Optional[str], Optional[pd.DataFrame]]:
     """
     Match student name from submission folder to roster.
@@ -310,7 +308,6 @@ def _match_student_to_roster(
     Args:
         name: Student name extracted from submission folder
         import_df: Roster DataFrame with "First Name", "Last Name", "Username" columns
-        log_callback: Optional function to log matching decisions
     
     Returns:
         Tuple of (username, matching_row) or (None, None) if no unique match found
@@ -328,7 +325,7 @@ def _match_student_to_roster(
     
     # Strategy 4: Fuzzy part matching
     if len(hit) != 1:
-        hit = _match_fuzzy_parts(name, import_df, log_callback)
+        hit = _match_fuzzy_parts(name, import_df)
     
     if len(hit) != 1:
         return None, None
@@ -341,8 +338,7 @@ def _process_student_files(
     folder_path: str,
     user: str,
     pdf_output_folder: str,
-    is_completion_process: bool,
-    log_callback: Optional[Callable[[str], None]]
+    is_completion_process: bool
 ) -> Dict[str, Any]:
     """Process files for a single student. Returns result dict."""
     files = os.listdir(folder_path)
@@ -353,9 +349,9 @@ def _process_student_files(
         dst = os.path.join(pdf_output_folder, f"{user}.pdf")
         
         if len(pdfs) == 1:
-            result.update(_process_single_pdf(name, folder_path, pdfs[0], dst, is_completion_process, log_callback))
+            result.update(_process_single_pdf(name, folder_path, pdfs[0], dst, is_completion_process))
         else:
-            result.update(_process_multiple_pdfs(name, folder_path, pdfs, dst, is_completion_process, log_callback))
+            result.update(_process_multiple_pdfs(name, folder_path, pdfs, dst, is_completion_process))
         
         result["pdf_path"] = dst
         result["status"] = "submitted"
@@ -367,14 +363,14 @@ def _process_student_files(
             file_type = "image file" if has_image else "non-PDF file"
             result["status"] = "unreadable"
             result["error"] = f"{name}: {file_type} → unreadable"
-            if log_callback:
-                log_callback(f"   {result['error']}")
+            log("SUBMISSION_ERROR", error=result['error'])
         else:
             result["status"] = "no_submission"
             result["error"] = f"{name}: No submission"
-            if log_callback:
-                msg = f"   {name}: No submission → 0 points" if is_completion_process else f"   {name}: No submission"
-                log_callback(msg)
+            if is_completion_process:
+                log("SUBMISSION_NO_SUB_POINTS", name=name)
+            else:
+                log("SUBMISSION_NO_SUB", name=name)
     
     return result
 
@@ -384,8 +380,7 @@ def _process_single_pdf(
     folder_path: str,
     pdf_file: str,
     dst: str,
-    is_completion_process: bool,
-    log_callback: Optional[Callable[[str], None]]
+    is_completion_process: bool
 ) -> Dict[str, Any]:
     """Process a single PDF file."""
     result = {"errors": []}
@@ -398,9 +393,10 @@ def _process_single_pdf(
     except Exception as e:
         result["errors"].append(f"{name}: Error reading PDF page count: {e}")
     
-    if log_callback:
-        msg = f"   {name}: PDF found → 10 points" if is_completion_process else f"   {name}: PDF found"
-        log_callback(msg)
+    if is_completion_process:
+        log("SUBMISSION_PDF_FOUND_POINTS", name=name)
+    else:
+        log("SUBMISSION_PDF_FOUND", name=name)
     
     return result
 
@@ -410,15 +406,15 @@ def _process_multiple_pdfs(
     folder_path: str,
     pdfs: List[str],
     dst: str,
-    is_completion_process: bool,
-    log_callback: Optional[Callable[[str], None]]
+    is_completion_process: bool
 ) -> Dict[str, Any]:
     """Process multiple PDFs by combining them."""
     result = {"errors": [], "multiple_pdfs": True}
     
-    if log_callback:
-        msg = f"   {name}: {len(pdfs)} PDFs found, combining → 10 points" if is_completion_process else f"   {name}: {len(pdfs)} PDFs found, combining"
-        log_callback(msg)
+    if is_completion_process:
+        log("SUBMISSION_MULTI_PDF_POINTS", name=name, count=len(pdfs))
+    else:
+        log("SUBMISSION_MULTI_PDF", name=name, count=len(pdfs))
     
     try:
         combined_writer = PdfWriter()
