@@ -20,7 +20,7 @@ from name_matching import names_match_fuzzy
 from import_file_handler import validate_import_file_early, validate_required_columns
 from grading_constants import REQUIRED_COLUMNS_COUNT, END_OF_LINE_COLUMN_INDEX, CONFIDENCE_HIGH, CONFIDENCE_MEDIUM
 from file_utils import open_file_with_default_app
-from grading_processor import format_error_message
+from grading_helpers import format_error_message
 from user_messages import log, log_raw
 
 
@@ -305,7 +305,7 @@ def _format_extraction_results(
                 # Check if low confidence (but has a grade)
                 elif conf < CONFIDENCE_HIGH:
                     if name not in seen_students:
-                        low_confidence.append(f"{name}: {grade} (confidence: {conf:.2f})")
+                        low_confidence.append(f"{name}: {grade}")
                         seen_students.add(name)
     
     # Process low_confidence_students list (from matching phase) - these are pre-formatted messages
@@ -336,19 +336,13 @@ def _format_extraction_results(
                 # Extract grade from message format: "Name: grade (low confidence...)"
                 if ": " in clean_msg:
                     grade_part = clean_msg.split(": ", 1)[1].split("(")[0].strip()
-                    if conf_val is not None:
-                        low_confidence.append(f"{student_name}: {grade_part} (confidence: {conf_val:.2f})")
-                    else:
-                        # Fallback: use message but try to extract confidence if present
-                        import re
-                        conf_match = re.search(r'confidence[:\s]+([\d.]+)', clean_msg, re.IGNORECASE)
-                        if conf_match:
-                            conf_val = float(conf_match.group(1))
-                            low_confidence.append(f"{student_name}: {grade_part} (confidence: {conf_val:.2f})")
-                        else:
-                            low_confidence.append(f"{student_name}: {grade_part} (low confidence)")
+                    # Remove confidence from display - just show name and grade
+                    low_confidence.append(f"{student_name}: {grade_part}")
                 else:
-                    low_confidence.append(clean_msg)
+                    # Remove confidence from display if present
+                    import re
+                    clean_display = re.sub(r'\s*\(confidence[:\s]+[\d.]+\)', '', clean_msg)
+                    low_confidence.append(clean_display)
                 seen_students.add(student_name)
     
     # Process skipped students (couldn't match to roster)
@@ -366,7 +360,7 @@ def _format_extraction_results(
                 no_grade_found.append(name)
             elif conf < CONFIDENCE_HIGH:
                 grade_display = grade_val if grade_val else "(no grade found)"
-                low_confidence.append(f"{name}: {grade_display} (confidence: {conf:.2f})")
+                low_confidence.append(f"{name}: {grade_display}")
             seen_students.add(name)
     
     # Process other extraction errors (non-fuzzy)

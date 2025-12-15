@@ -394,10 +394,11 @@ def _process_single_pdf(
         log("DEV_ERROR_PDF_PAGE_COUNT", name=name, error=str(e))
         result["errors"].append(f"{name}: Error reading PDF page count: {e}")
     
-    if is_completion_process:
-        log("SUBMISSION_PDF_FOUND_POINTS", name=name)
-    else:
-        log("SUBMISSION_PDF_FOUND", name=name)
+    # Removed individual PDF log entries - only show issues/warnings
+    # if is_completion_process:
+    #     log("SUBMISSION_PDF_FOUND_POINTS", name=name)
+    # else:
+    #     log("SUBMISSION_PDF_FOUND", name=name)
     
     return result
 

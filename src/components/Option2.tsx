@@ -60,6 +60,44 @@ export default function Option2() {
   // Track last processed assignment (for Split PDF visibility)
   const [lastProcessedAssignment, setLastProcessedAssignment] = useState(null);
   
+  // Helper function to extract class code from class folder name (e.g., "TTH 11-1220 FM 4202" -> "FM 4202")
+  const extractClassCode = (className: string): string => {
+    // Look for pattern: 2 letters, space, 4 digits at the end
+    const match = className.match(/([A-Z]{2}\s+\d{4})\s*$/);
+    if (match) {
+      return match[1];
+    }
+    // Fallback: try to extract last 7 characters
+    if (className.length >= 7) {
+      return className.slice(-7).trim();
+    }
+    return '';
+  };
+  
+  // Helper function to format assignment display name: "{assignment_name} {class_code}"
+  const formatAssignmentDisplayName = (assignmentName: string, className: string): string => {
+    // Remove "combined PDF" from the name (case insensitive)
+    let cleaned = assignmentName.replace(/\s+combined\s+pdf\s*$/i, '').trim();
+    
+    // Extract class code
+    const classCode = extractClassCode(className);
+    
+    // Remove class code from assignment name if it's already in there
+    if (classCode) {
+      const classCodePattern = new RegExp('\\s*' + classCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'gi');
+      cleaned = cleaned.replace(classCodePattern, ' ').trim();
+    }
+    
+    // Clean up any extra spaces
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    // Add class code back if we have one
+    if (classCode) {
+      return `${cleaned} ${classCode}`;
+    }
+    return cleaned;
+  };
+  
   // Store uploaded PDF file (for browser mode)
   const [uploadedPdfFile, setUploadedPdfFile] = useState(null);
   
@@ -269,9 +307,12 @@ export default function Option2() {
       if (result.success) {
         // Success message already logged by backend - don't duplicate
         // Use combined PDF name if available, otherwise fall back to assignment name
-        const displayName = result.combined_pdf_path 
+        let rawName = result.combined_pdf_path 
           ? result.combined_pdf_path.split('\\').pop()?.replace('.pdf', '') || result.assignment_name
           : result.assignment_name || zipFilename.replace(/\s*Download.*\.zip$/i, '').trim();
+        
+        // Format as "{assignment_name} {class_code}" (without "combined PDF")
+        const displayName = formatAssignmentDisplayName(rawName, selectedClass);
         
         setLastProcessedAssignment({
           name: displayName,
@@ -451,9 +492,11 @@ export default function Option2() {
             addLog(`📄 Selected: ${file.name}`);
             // Just store the file and set assignment - don't process yet
             setUploadedPdfFile(file);
-            const assignmentName = file.name.replace(/\.pdf$/i, '').trim();
+            const rawAssignmentName = file.name.replace(/\.pdf$/i, '').trim();
+            // Format as "{assignment_name} {class_code}" (without "combined PDF")
+            const displayName = formatAssignmentDisplayName(rawAssignmentName, selectedClass);
             setLastProcessedAssignment({
-              name: assignmentName,
+              name: displayName,
               className: selectedClass,
               zipPath: ''
             });

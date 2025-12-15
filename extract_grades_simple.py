@@ -36,7 +36,7 @@ if TESSERACT_AVAILABLE:
 
 def create_first_pages_pdf(pdf_path, log):
     """Create PDF with only first page of each student."""
-    log("📑 Creating 'first pages only' PDF for quick review...")
+    # Removed logging: "📑 Creating 'first pages only' PDF for quick review..."
     
     try:
         reader = PdfReader(pdf_path)
@@ -62,7 +62,7 @@ def create_first_pages_pdf(pdf_path, log):
             writer.write(output_file)
         
         log(f"✅ Created grades-only PDF: {os.path.basename(output_path)}")
-        log(f"   📄 Contains {len(first_pages)} student pages")
+        # Removed logging: "📄 Contains {len(first_pages)} student pages"
         
         return output_path
     except Exception as e:
@@ -86,8 +86,8 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
     grades_only_pdf = create_first_pages_pdf(pdf_path, log)
     pdf_to_scan = grades_only_pdf if grades_only_pdf else pdf_path
     
-    log(f"✅ Google Vision API: {'Ready' if GOOGLE_VISION_API_KEY else 'Not configured'}")
-    log(f"✅ Tesseract: {'Ready' if TESSERACT_AVAILABLE else 'Not available'}")
+    # Removed logging: "✅ Google Vision API: Ready"
+    # Removed logging: "✅ Tesseract: Ready"
     
     # Convert PDF to images
     try:
@@ -114,7 +114,7 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
         if len(pages) == 0:
             raise Exception("Oops. You've chosen the wrong file or class. Try again.")
         
-        log(f"📊 Scanning {len(pages)} pages for grades")
+        log(f"📊 Scanning {len(pages)} pages for grades...")
     except Exception as e:
         error_msg = str(e)
         if "Could not convert PDF to images" in error_msg or "empty" in error_msg.lower():
@@ -124,7 +124,7 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
     
     results = []
     skipped_pages = []
-    log("🔍 Extracting names and grades...")
+    # Removed detailed logging: "🔍 Extracting names and grades..."
     
     # Get PDF reader for watermark extraction
     try:
@@ -178,7 +178,7 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
             skipped_pages.append((i+1, "Not a first page (no '(1 of' marker)"))
             continue
         
-        log(f"🔍 Processing page {i+1} (first page of student)...")
+        # Removed detailed logging: "🔍 Processing page {i+1} (first page of student)..."
         
         # Extract name from watermark text
         # Only use watermark text (which has pattern "Name (X of Y)") - don't use OCR fallback
@@ -270,37 +270,22 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
                         if best_match:
                             matched_name, similarity = best_match
                             name = matched_name
-                            log(f"   🔍 Fuzzy matched watermark text '{cleaned_watermark}' → '{name}' (similarity: {similarity:.2f})")
+                            # Removed detailed logging: fuzzy match details
                         else:
                             name = f"Unknown Student (Page {i+1})"
-                            log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
-                            log(f"   🔍  Watermark text: '{text_top}'")
+                            # Removed detailed logging: name extraction warnings
                     else:
                         name = f"Unknown Student (Page {i+1})"
-                        log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
-                        log(f"   🔍  Watermark text: '{text_top}'")
+                        # Removed detailed logging: name extraction warnings
                 except Exception as e:
                     # If fuzzy matching fails, fall back to Unknown Student
                     name = f"Unknown Student (Page {i+1})"
-                    log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
-                    log(f"   🔍  Watermark text: '{text_top}'")
-                    log(f"   ⚠️  Fuzzy matching error: {str(e)}")
+                    # Removed detailed logging: fuzzy matching errors
             else:
                 name = f"Unknown Student (Page {i+1})"
-                log(f"   ⚠️  Warning: Could not extract valid name from page {i+1}")
-                if text_top:
-                    log(f"   🔍  Watermark text: '{text_top}'")
+                # Removed detailed logging: name extraction warnings
         
-        log(f"   ✅ Name: {name}")
-        log(f"   📊 Grade: {grade} (confidence: {confidence:.2f})")
-        if grade_text:
-            log(f"   🔍 OCR text: '{grade_text}'")
-        else:
-            log(f"   ⚠️  Warning: No OCR text extracted")
-        
-        # Track if grade extraction failed
-        if not grade or grade == "No grade found":
-            log(f"   ⚠️  Warning: Could not extract grade for {name}")
+        # Removed detailed logging: name, grade, OCR text, warnings
         
         results.append({
             "Student Name": name, 
@@ -317,20 +302,10 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
         return None
     
     # Process results
-    log(f"✅ Extraction complete! Processed {len(results)} students.")
-    
-    if skipped_pages:
-        log(f"   ⚠️  Skipped {len(skipped_pages)} pages (not first pages of students)")
-    
-    if grades_only_pdf:
-        log(f"📑 Grades-only PDF created: {os.path.basename(grades_only_pdf)}")
-    
-    log("")
-    log("📋 EXTRACTED GRADES:")
-    for i, result in enumerate(results, 1):
-        conf = result['Confidence']
-        conf_indicator = "✅" if conf >= 0.7 else "⚠️" if conf >= 0.4 else "❌"
-        log(f"   {i:2d}. {result['Student Name']}: {result['Grade']} {conf_indicator} (confidence: {conf:.2f})")
+    # Removed detailed logging: "✅ Extraction complete! Processed {len(results)} students."
+    # Removed detailed logging: skipped pages info
+    # Removed detailed logging: "📑 Grades-only PDF created"
+    # Removed detailed logging: "📋 EXTRACTED GRADES:" section
     
     # Return results as a dict with grades and confidence scores
     # Format: {name: {"grade": "XX.X", "grade_raw": "raw text", "confidence": 0.XX}}

@@ -206,7 +206,25 @@ export default function LogTerminal({
               }
             }
             
-            // Check for "Created combined PDF" message
+            // Check for "Combined PDF created" message with filename
+            const combinedPdfMatch = cleanLog.match(/✅ Combined PDF created:\s*(.+)$/i);
+            if (combinedPdfMatch) {
+              const filename = combinedPdfMatch[1].trim();
+              return (
+                <div key={index} className={isError ? 'text-red-500' : ''}>
+                  <span>✅ Combined PDF created: </span>
+                  <button
+                    onClick={handleOpenCombinedPdf}
+                    className={`underline cursor-pointer hover:opacity-70 font-bold ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-500'}`}
+                    style={{ textDecoration: 'underline', textUnderlineOffset: '3px' }}
+                  >
+                    📄 {filename}
+                  </button>
+                </div>
+              );
+            }
+            
+            // Legacy check for "Created combined PDF" message (old format)
             const combinedMatch = log.match(/Created combined PDF[:\s]*(\d+)\s*submissions/i);
             if (combinedMatch) {
               const submissionCount = combinedMatch[1];

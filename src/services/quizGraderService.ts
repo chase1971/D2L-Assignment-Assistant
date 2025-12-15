@@ -158,7 +158,6 @@ export const extractGrades = (drive: string, selectedClass: string, addLog: LogC
   apiCall({
     endpoint: '/quiz/extract-grades',
     body: { drive, className: selectedClass },
-    logMessage: '📡 Sending grade extraction request to backend...',
     errorMessage: 'Failed to extract grades',
     addLog
   });

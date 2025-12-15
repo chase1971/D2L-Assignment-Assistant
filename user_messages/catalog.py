@@ -68,11 +68,11 @@ MESSAGES = {
     "GRADES_IMPORT_NOT_FOUND": ("❌ Import file not found", "ERROR", "E1004"),
     "GRADES_NO_RESULTS": ("❌ No grades were extracted from the PDF", "ERROR", "E1005"),
     "GRADES_SUCCESS": ("✅ Grade extraction completed successfully!", "SUCCESS", "S1010"),
-    "GRADES_ISSUES_HEADER": ("ISSUES FOUND (Please Review):", "WARNING", "W1001"),
-    "GRADES_NO_GRADE": ("❌ NO GRADE FOUND:", "ERROR", "E1006"),
-    "GRADES_LOW_CONFIDENCE": ("❌ LOW CONFIDENCE (needs verification):", "WARNING", "W1002"),
-    "GRADES_NAME_ISSUES": ("⚠️ NAME MATCHING ISSUES (fuzzy match):", "WARNING", "W1003"),
-    "GRADES_NO_SUBMISSIONS": ("❌ NO SUBMISSIONS:", "ERROR", "E1007"),
+    "GRADES_ISSUES_HEADER": ("ISSUES FOUND (Please Review):", "WARNING", None),
+    "GRADES_NO_GRADE": ("❌ NO GRADE FOUND:", "ERROR", None),
+    "GRADES_LOW_CONFIDENCE": ("❌ LOW CONFIDENCE (needs verification):", "WARNING", None),
+    "GRADES_NAME_ISSUES": ("⚠️ NAME MATCHING ISSUES (fuzzy match):", "WARNING", None),
+    "GRADES_NO_SUBMISSIONS": ("❌ NO SUBMISSIONS:", "ERROR", None),
     
     # =========================================================================
     # SPLIT PDF / REZIP
@@ -180,7 +180,7 @@ MESSAGES = {
     # PDF OPERATIONS (CREATING/SPLITTING)
     # =========================================================================
     "PDF_CREATING": ("Creating combined PDF...", "INFO", "I1048"),
-    "PDF_COMBINED_SUCCESS": ("✅ Combined PDF created!", "SUCCESS", "S1025"),
+    "PDF_COMBINED_SUCCESS": ("✅ Combined PDF created: {filename}", "SUCCESS", "S1025"),
     "PDF_ERROR_PROCESSING": ("   Error processing {name}: {error}", "ERROR", "E1028"),
     "PDF_SPLITTING_HEADER": ("SPLITTING COMBINED PDF", "INFO", "I1049"),
     "PDF_TOTAL_PAGES": ("   Combined PDF has {pages} pages", "INFO", "I1050"),

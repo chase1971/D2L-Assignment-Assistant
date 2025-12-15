@@ -97,7 +97,9 @@ def create_combined_pdf(
         writer.write(f)
     
     log("EMPTY_LINE")
-    log("PDF_COMBINED_SUCCESS")
+    # Extract just the filename from the full path
+    filename = os.path.basename(output_path)
+    log("PDF_COMBINED_SUCCESS", filename=filename)
     log("EMPTY_LINE")
     
     return output_path
