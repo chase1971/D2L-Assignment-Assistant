@@ -3,6 +3,7 @@ import { FolderOpen } from 'lucide-react';
 import ZipSelectionModal from './ZipSelectionModal';
 import AssignmentSelectionModal from './AssignmentSelectionModal';
 import ConfirmationModal from './ConfirmationModal';
+import ClearOptionsModal, { ClearOption } from './ClearOptionsModal';
 import ActionCard from './ActionCard';
 import LogTerminal from './LogTerminal';
 import NavigationBar from './NavigationBar';
@@ -41,7 +42,6 @@ export default function Option2() {
   const drive = 'C'; // Always use C drive
   const [isDark, setIsDark] = useState(false);
   const [selectedClass, setSelectedClass] = useState('');
-  const [expandedLogging, setExpandedLogging] = useState(false);
   const [dontOverride, setDontOverride] = useState(false);
   const [logs, setLogs] = useState([]);
   
@@ -59,6 +59,9 @@ export default function Option2() {
   
   // Track last processed assignment (for Split PDF visibility)
   const [lastProcessedAssignment, setLastProcessedAssignment] = useState(null);
+  
+  // Store confidence scores from grade extraction
+  const [confidenceScores, setConfidenceScores] = useState<Array<{name: string; grade: string; confidence: number}> | null>(null);
   
   // Helper function to extract class code from class folder name (e.g., "TTH 11-1220 FM 4202" -> "FM 4202")
   const extractClassCode = (className: string): string => {
@@ -107,15 +110,22 @@ export default function Option2() {
   const [classRosterPath, setClassRosterPath] = useState<string | null>(null);
   
   // Clear All Data states
-  const [saveFoldersAndPdf, setSaveFoldersAndPdf] = useState(false);
-  const [deleteArchivedData, setDeleteArchivedData] = useState(false);
   const [showAssignmentSelection, setShowAssignmentSelection] = useState(false);
   const [processingFolders, setProcessingFolders] = useState([]);
   const [selectedAssignments, setSelectedAssignments] = useState(new Set());
+  const [wasSelectAllUsed, setWasSelectAllUsed] = useState(false);
   
   // Confirmation modal state
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmationConfig, setConfirmationConfig] = useState(null);
+  
+  // Clear options modal state
+  const [showClearOptions, setShowClearOptions] = useState(false);
+  const [clearOptionsConfig, setClearOptionsConfig] = useState<{
+    title: string;
+    message: string;
+    onConfirm: (option: ClearOption) => void;
+  } | null>(null);
   
   // Server status state
   const [serverStatus, setServerStatus] = useState('checking');
@@ -136,18 +146,42 @@ export default function Option2() {
     return () => clearInterval(interval);
   }, []);
   
-  // Load saveFoldersAndPdf preference from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('saveFoldersAndPdf');
-    if (saved !== null) {
-      setSaveFoldersAndPdf(saved === 'true');
-    }
-  }, []);
 
-  // Add log helper
+  // Add log helper with duplicate filtering
   const addLog = (message: string) => {
     if (message) {
-      setLogs(prevLogs => [...prevLogs, message]);
+      setLogs(prevLogs => {
+        // Filter out unwanted messages
+        const messageLower = message.toLowerCase();
+        const unwantedPatterns = [
+          'loaded import file',
+          'sending split pdf request to backend',
+          'uploading pdf to backend',
+          'sending request to backend',
+          'sending process request to backend',
+          'sending selected quiz processing request to backend',
+          'sending completion processing request to backend',
+          'sending selected completion processing request to backend',
+          'sending open downloads request to backend',
+          'sending clear request to backend',
+          'sending clear archived data request to backend',
+          'opening downloads folder',
+          'opening folder',
+          '📡 sending',
+          '📁 opening'
+        ];
+        
+        if (unwantedPatterns.some(pattern => messageLower.includes(pattern))) {
+          return prevLogs; // Don't add unwanted messages
+        }
+        
+        // Filter out duplicate consecutive messages
+        if (prevLogs.length > 0 && prevLogs[prevLogs.length - 1] === message) {
+          return prevLogs; // Don't add duplicate
+        }
+        
+        return [...prevLogs, message];
+      });
     }
   };
 
@@ -231,34 +265,14 @@ export default function Option2() {
     }
   };
 
-  // Refresh classes
-  const handleRefresh = async () => {
-    addLog('📂 Loading classes from Rosters etc folder...');
-    try {
-      const result = await listClasses(drive);
-      if (result.success && result.classes) {
-        addLog(`✅ Found ${result.classes.length} classes`);
-      } else {
-        if (result.error?.includes('Could not find roster folder')) {
-          addLog('❌ Could not find roster folder');
-        } else {
-          addLog(`❌ ${result.error}`);
-        }
-      }
-    } catch (error) {
-      addLog(`❌ Error loading classes: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-
   // Open Downloads folder
   const handleOpenDownloads = async () => {
-    addLog('📁 Opening Downloads folder...');
     try {
       const result = await openDownloads(addLog);
       if (result.success) {
         addLog('✅ Downloads folder opened successfully!');
       } else {
-        addLog(`❌ Error: ${result.error}`);
+        addLog(`❌ ${result.error}`);
       }
     } catch (error) {
       addLog(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -405,8 +419,11 @@ export default function Option2() {
   const displayError = (error: string | undefined) => {
     if (!error) return;
     
-    // Remove "Error:" prefix if present
+    // Remove "Error:" prefix if present (case insensitive)
     let cleanError = error.replace(/^Error:\s*/i, '').trim();
+    
+    // Remove duplicate ❌ at the start if present
+    cleanError = cleanError.replace(/^❌\s*❌\s*/, '❌ ');
     
     // Split multi-line errors and display each line
     const errorLines = cleanError.split('\n');
@@ -431,6 +448,13 @@ export default function Option2() {
     
     try {
       const result = await extractGrades(drive, selectedClass, addLog);
+      
+      // Store confidence scores if available
+      if (result.success && result.confidenceScores) {
+        setConfidenceScores(result.confidenceScores);
+      } else {
+        setConfidenceScores(null);
+      }
       
       // Note: Success message is already printed by the backend
       // Only handle errors if they weren't already displayed in logs
@@ -514,14 +538,11 @@ export default function Option2() {
     if (!requireClass()) return;
 
     setSplitting(true);
-    addLog('📦 Starting PDF split and rezip...');
     
     try {
       const result = await splitPdfUpload(drive, selectedClass, file, addLog);
       
-      if (result.success) {
-        addLog('✅ Split PDF and rezip completed!');
-      } else {
+      if (!result.success) {
         displayError(result.error);
       }
     } catch (error) {
@@ -544,7 +565,6 @@ export default function Option2() {
     }
 
     setSplitting(true);
-    addLog('📦 Starting PDF split and rezip...');
     
     try {
       // Determine assignment name:
@@ -563,9 +583,7 @@ export default function Option2() {
       
       const result = await splitPdf(drive, selectedClass, finalAssignmentName, pdfPath, addLog);
       
-      if (result.success) {
-        addLog('✅ Split PDF and rezip completed!');
-      } else {
+      if (!result.success) {
         displayError(result.error);
       }
     } catch (error) {
@@ -576,15 +594,22 @@ export default function Option2() {
     }
   };
 
-  // Open folder (grade processing folder)
+  // Open folder (grade processing folder or class roster folder based on context)
   const handleOpenFolder = async () => {
     if (!requireClass()) return;
     
     try {
-      const result = await openFolder(drive, selectedClass, addLog);
+      // If there's a current assignment, open the grade processing folder
+      // Otherwise, open the class roster folder
+      const openClassFolderOnly = !lastProcessedAssignment || lastProcessedAssignment.className !== selectedClass;
+      const result = await openFolder(drive, selectedClass, addLog, openClassFolderOnly);
       
       if (result.success) {
-        addLog('📂 Folder opened');
+        if (openClassFolderOnly) {
+          addLog('✅ Class roster folder opened');
+        } else {
+          addLog('✅ Grade processing folder opened');
+        }
       } else {
         if (result.error?.includes('No grade processing folder found')) {
           addLog('❌ No grade processing folder found');
@@ -619,61 +644,37 @@ export default function Option2() {
   const handleClearAllData = async () => {
     if (!requireClass()) return;
 
-    // Check if delete archived data is selected
-    if (deleteArchivedData) {
-      setClearing(true);
-      
-      try {
-        // First, list all processing folders to find archived ones
-        const result = await listProcessingFolders(drive, selectedClass);
-        
-        if (result.success && result.folders && result.folders.length > 0) {
-          // Filter for archived folders
-          const archivedFolders = result.folders.filter(folder => 
-            folder.name.startsWith('archived ')
-          );
-          
-          if (archivedFolders.length === 0) {
-            setClearing(false);
-            addLog('ℹ️ No archived folders found for this class');
-            return;
-          }
-          
-          // Show selection modal with archived folders
-          setProcessingFolders(archivedFolders);
-          setSelectedAssignments(new Set()); // Clear previous selections
-          setShowAssignmentSelection(true);
-          setClearing(false);
-        } else {
-          setClearing(false);
-          addLog('ℹ️ No archived folders found for this class');
-        }
-      } catch (error) {
-        setClearing(false);
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        displayError(errorMsg);
-      }
-      return;
-    }
-
-    // If current assignment exists, clear it directly
-    if (lastProcessedAssignment) {
+    // If current assignment exists, show options modal
+    if (lastProcessedAssignment && lastProcessedAssignment.className === selectedClass) {
       const assignmentName = lastProcessedAssignment.name;
-      // Format as folder name for display (e.g., "grade processing FM 4202 Quiz 4 (7.1 - 7.4)")
       const folderDisplayName = formatAssignmentFolderName(assignmentName, selectedClass);
-      const message = saveFoldersAndPdf
-        ? `This will archive "${folderDisplayName}" and keep only unzipped folders and combined PDF. Continue?`
-        : `This will delete all data for "${folderDisplayName}". Continue?`;
       
-      setConfirmationConfig({
-        title: 'Confirm Clear Data',
-        message: message,
-        onConfirm: async () => {
-          setShowConfirmation(false);
+      setClearOptionsConfig({
+        title: 'Clear Current Assignment',
+        message: `Select how to clear "${folderDisplayName}":`,
+        onConfirm: async (option: ClearOption) => {
+          setShowClearOptions(false);
           setClearing(true);
           
           try {
-            const result = await clearAllData(drive, selectedClass, assignmentName, saveFoldersAndPdf, addLog);
+            let saveFoldersAndPdf = false;
+            let saveCombinedPdf = false;
+            
+            if (option === 'saveFoldersAndPdf') {
+              saveFoldersAndPdf = true;
+            } else if (option === 'saveCombinedPdf') {
+              saveCombinedPdf = true;
+            }
+            // else option === 'deleteAll' - both flags remain false
+            
+            const result = await clearAllData(
+              drive, 
+              selectedClass, 
+              assignmentName, 
+              saveFoldersAndPdf, 
+              saveCombinedPdf,
+              addLog
+            );
             
             if (result.success) {
               // Clear the last processed assignment
@@ -689,7 +690,7 @@ export default function Option2() {
           }
         }
       });
-      setShowConfirmation(true);
+      setShowClearOptions(true);
       return;
     }
 
@@ -710,6 +711,7 @@ export default function Option2() {
         
         setProcessingFolders(processingFolders);
         setSelectedAssignments(new Set()); // Clear previous selections
+        setWasSelectAllUsed(false); // Reset flag
         setShowAssignmentSelection(true);
       } else {
         addLog('❌ No processing folders found for this class');
@@ -727,37 +729,53 @@ export default function Option2() {
       return;
     }
     
-    setShowAssignmentSelection(false);
-    
     const assignmentsList: string[] = Array.from(selectedAssignments);
     
-    // Check if we're deleting archived folders
-    const isArchived = assignmentsList.some(name => name.startsWith('archived '));
-    
-    if (isArchived && deleteArchivedData) {
-      // Deleting archived folders
-      const message = `This will permanently delete ${assignmentsList.length} archived folder(s). This action cannot be undone. Continue?`;
-      
-      setConfirmationConfig({
-        title: 'Confirm Delete Archived Data',
-        message: message,
-        onConfirm: async () => {
-          setShowConfirmation(false);
+    // If "Select All" was used, show options modal
+    if (wasSelectAllUsed && assignmentsList.length === processingFolders.length) {
+      setShowAssignmentSelection(false);
+      setClearOptionsConfig({
+        title: 'Clear All Assignments',
+        message: `Select how to clear ${assignmentsList.length} assignment(s):`,
+        onConfirm: async (option: ClearOption) => {
+          setShowClearOptions(false);
           setClearing(true);
           
           try {
-            addLog(`🗑️ Clearing all archived data...`);
-            addLog(`📦 Found ${assignmentsList.length} archived folder(s) to delete`);
-            addLog('⏳ This may take a moment...');
+            let saveFoldersAndPdf = false;
+            let saveCombinedPdf = false;
             
-            // Call the clearArchivedData endpoint which deletes all archived folders at once
-            const result = await clearArchivedData(drive, selectedClass, addLog);
+            if (option === 'saveFoldersAndPdf') {
+              saveFoldersAndPdf = true;
+            } else if (option === 'saveCombinedPdf') {
+              saveCombinedPdf = true;
+            }
+            // else option === 'deleteAll' - both flags remain false
             
-            if (result.success) {
-              addLog('✅ All archived data cleared successfully!');
-              setDeleteArchivedData(false); // Reset checkbox after successful clear
-            } else {
-              displayError(result.error || 'Unknown error');
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (const assignmentName of assignmentsList) {
+              const result = await clearAllData(
+                drive, 
+                selectedClass, 
+                assignmentName as string, 
+                saveFoldersAndPdf, 
+                saveCombinedPdf,
+                addLog
+              );
+              
+              if (result.success) {
+                successCount++;
+              } else {
+                failCount++;
+                displayError(`  ❌ Failed: ${result.error || 'Unknown error'}`);
+              }
+            }
+            
+            // Clear the last processed assignment if it was cleared
+            if (lastProcessedAssignment && selectedAssignments.has(lastProcessedAssignment.name)) {
+              setLastProcessedAssignment(null);
             }
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -767,28 +785,42 @@ export default function Option2() {
           }
         }
       });
-      setShowConfirmation(true);
+      setShowClearOptions(true);
       return;
     }
     
-    // Normal assignment clearing
-    const message = saveFoldersAndPdf
-      ? `This will archive ${assignmentsList.length} assignment(s) and keep only unzipped folders and combined PDF. Continue?`
-      : `This will delete all data for ${assignmentsList.length} assignment(s). Continue?`;
-    
-    setConfirmationConfig({
-      title: 'Confirm Clear Data',
-      message: message,
-      onConfirm: async () => {
-        setShowConfirmation(false);
+    // Normal assignment clearing (individual selections) - show options modal
+    setShowAssignmentSelection(false);
+    setClearOptionsConfig({
+      title: 'Clear Assignment',
+      message: `Select how to clear ${assignmentsList.length} assignment(s):`,
+      onConfirm: async (option: ClearOption) => {
+        setShowClearOptions(false);
         setClearing(true);
         
         try {
+          let saveFoldersAndPdf = false;
+          let saveCombinedPdf = false;
+          
+          if (option === 'saveFoldersAndPdf') {
+            saveFoldersAndPdf = true;
+          } else if (option === 'saveCombinedPdf') {
+            saveCombinedPdf = true;
+          }
+          // else option === 'deleteAll' - both flags remain false
+          
           let successCount = 0;
           let failCount = 0;
           
           for (const assignmentName of assignmentsList) {
-            const result = await clearAllData(drive, selectedClass, assignmentName as string, saveFoldersAndPdf, addLog);
+            const result = await clearAllData(
+              drive, 
+              selectedClass, 
+              assignmentName as string, 
+              saveFoldersAndPdf, 
+              saveCombinedPdf,
+              addLog
+            );
             
             if (result.success) {
               successCount++;
@@ -810,13 +842,14 @@ export default function Option2() {
         }
       }
     });
-    setShowConfirmation(true);
+    setShowClearOptions(true);
   };
   
   // Handle assignment selection modal close
   const handleAssignmentModalClose = () => {
     setShowAssignmentSelection(false);
     setSelectedAssignments(new Set());
+    setWasSelectAllUsed(false);
     setClearing(false);
   };
   
@@ -829,6 +862,10 @@ export default function Option2() {
       } else {
         newSet.add(assignmentName);
       }
+      // If user manually toggles, reset the select all flag
+      if (wasSelectAllUsed && newSet.size !== processingFolders.length) {
+        setWasSelectAllUsed(false);
+      }
       return newSet;
     });
   };
@@ -836,17 +873,13 @@ export default function Option2() {
   // Select all assignments
   const handleSelectAll = () => {
     setSelectedAssignments(new Set(processingFolders.map(f => f.name)));
+    setWasSelectAllUsed(true);
   };
   
   // Deselect all assignments
   const handleDeselectAll = () => {
     setSelectedAssignments(new Set());
-  };
-  
-  // Handle checkbox change and persist to localStorage
-  const handleSaveFoldersAndPdfChange = (checked: boolean) => {
-    setSaveFoldersAndPdf(checked);
-    localStorage.setItem('saveFoldersAndPdf', String(checked));
+    setWasSelectAllUsed(false);
   };
 
   return (
@@ -858,7 +891,6 @@ export default function Option2() {
         selectedClass={selectedClass}
         handleClassChange={handleClassChange}
         classOptions={CLASS_OPTIONS}
-        handleRefresh={handleRefresh}
         handleOpenDownloads={handleOpenDownloads}
         serverStatus={serverStatus}
         metalButtonClass={metalButtonClass}
@@ -904,6 +936,23 @@ export default function Option2() {
           message={confirmationConfig.message}
           confirmText="CLEAR"
           cancelText="CANCEL"
+          isDark={isDark}
+          metalButtonClass={metalButtonClass}
+          metalButtonStyle={metalButtonStyle}
+        />
+      )}
+      
+      {/* Clear Options Modal */}
+      {clearOptionsConfig && (
+        <ClearOptionsModal
+          isOpen={showClearOptions}
+          onClose={() => {
+            setShowClearOptions(false);
+            setClearOptionsConfig(null);
+          }}
+          onConfirm={clearOptionsConfig.onConfirm}
+          title={clearOptionsConfig.title}
+          message={clearOptionsConfig.message}
           isDark={isDark}
           metalButtonClass={metalButtonClass}
           metalButtonStyle={metalButtonStyle}
@@ -1003,67 +1052,69 @@ export default function Option2() {
                 >
                   {splitting ? 'PROCESSING...' : 'SPLIT PDF AND REZIP'}
                 </button>
+                
                 <button
                   onClick={handleOpenFolder}
                   disabled={!selectedClass}
                   className={`w-full rounded-lg transition-all border shadow-lg flex items-center justify-center gap-2 font-medium ${metalButtonClass(isDark)} disabled:opacity-50 disabled:cursor-not-allowed`}
-                  style={{ ...metalButtonStyle(isDark), padding: '16px 16px', fontSize: '16px' }}
+                  style={{ ...metalButtonStyle(isDark), padding: '16px 16px', fontSize: '14px' }}
+                  title={lastProcessedAssignment && lastProcessedAssignment.className === selectedClass 
+                    ? `Open grade processing folder for ${lastProcessedAssignment.name}`
+                    : selectedClass 
+                    ? `Open class roster folder for ${selectedClass}`
+                    : 'Select a class first'}
                 >
                   <FolderOpen size={18} />
-                  OPEN FOLDER
+                  {lastProcessedAssignment && lastProcessedAssignment.className === selectedClass 
+                    ? `OPEN: ${lastProcessedAssignment.name.replace(/\s+combined\s+pdf\s*$/i, '').toUpperCase()}`
+                    : selectedClass 
+                    ? `OPEN: ${selectedClass.toUpperCase()}`
+                    : 'OPEN FOLDER'}
                 </button>
               </div>
             </ActionCard>
 
             {/* Clear Data */}
             <ActionCard title="CLEAR DATA" isDark={isDark} titleColor={isDark ? 'text-red-400' : 'text-red-700'}>
-              <div className="flex items-stretch gap-3 relative">
-                {/* Left column - Checkboxes stacked */}
-                <div className="flex flex-col justify-around" style={{ maxWidth: '300px', flexShrink: 0 }}>
-                  <label className={`flex items-center space-x-2 cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    <input
-                      type="checkbox"
-                      checked={saveFoldersAndPdf}
-                      onChange={(e) => handleSaveFoldersAndPdfChange(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Save folders and single PDF</span>
-                  </label>
-                  
-                  <label className={`flex items-center space-x-2 cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    <input
-                      type="checkbox"
-                      checked={deleteArchivedData}
-                      onChange={(e) => setDeleteArchivedData(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-sm">Delete archive data</span>
-                  </label>
-                </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleClearAllData}
+                  disabled={!selectedClass || clearing}
+                  className={`rounded-lg transition-all border-2 shadow-lg font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed`}
+                  style={{ 
+                    fontSize: '18px', 
+                    padding: '12px 40px',
+                    backgroundColor: isDark ? '#dc2626' : '#ef4444',
+                    borderColor: isDark ? '#b91c1c' : '#dc2626',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!clearing && selectedClass) {
+                      e.currentTarget.style.backgroundColor = isDark ? '#b91c1c' : '#dc2626';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = isDark ? '#dc2626' : '#ef4444';
+                  }}
+                >
+                  {clearing ? 'CLEARING...' : 'CLEAR'}
+                </button>
                 
-                {/* Right column - Button spanning full height */}
-                <div className="flex items-center justify-center flex-1" style={{ marginLeft: '-80px' }}>
-                  <button
-                    onClick={handleClearAllData}
-                    disabled={!selectedClass || clearing}
-                    className={`rounded-lg transition-all border-2 shadow-lg font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed`}
-                    style={{ 
-                      fontSize: '18px', 
-                      padding: '12px 40px',
-                      backgroundColor: isDark ? '#dc2626' : '#ef4444',
-                      borderColor: isDark ? '#b91c1c' : '#dc2626',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!clearing && selectedClass) {
-                        e.currentTarget.style.backgroundColor = isDark ? '#b91c1c' : '#dc2626';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = isDark ? '#dc2626' : '#ef4444';
-                    }}
-                  >
-                    {clearing ? 'CLEARING...' : 'CLEAR'}
-                  </button>
+                {/* Show current assignment */}
+                <div className={`flex-1 p-2 rounded border ${
+                  isDark ? 'bg-[#1a2942]/50 border-[#2a3952]' : 'bg-[#d0d0d4] border-gray-400'
+                }`}>
+                  <div className={`text-xs uppercase tracking-wider mb-1 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
+                    Current Assignment:
+                  </div>
+                  {lastProcessedAssignment && lastProcessedAssignment.className === selectedClass ? (
+                    <div className={`text-sm font-medium truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      📄 {lastProcessedAssignment.name}
+                    </div>
+                  ) : (
+                    <div className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                      None
+                    </div>
+                  )}
                 </div>
               </div>
             </ActionCard>
@@ -1073,9 +1124,8 @@ export default function Option2() {
           <LogTerminal
             logs={logs}
             isDark={isDark}
-            expandedLogging={expandedLogging}
-            setExpandedLogging={setExpandedLogging}
             addLog={addLog}
+            confidenceScores={confidenceScores}
             drive={drive}
             selectedClass={selectedClass}
           />

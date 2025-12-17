@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CLI script for clearing assignment data with selective preservation
-Usage: python clear_data_cli.py <drive> <className> [assignmentName] [--save-folders-and-pdf] [--list]
+Usage: python clear_data_cli.py <drive> <className> [assignmentName] [--save-folders-and-pdf|--save-combined-pdf] [--list]
 """
 
 import sys
@@ -190,13 +190,13 @@ def clear_all_archived_data(class_folder_path: str) -> int:
     return deleted_count
 
 
-def clear_assignment_data(folder_path: str, save_mode: bool = False) -> bool:
+def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bool:
     """
     Clear data with optional selective preservation.
     
     Args:
         folder_path: Path to 'grade processing [Assignment]' folder
-        save_mode: If True, keep unzipped folders and combined PDF, rename to 'archived'
+        save_mode: One of 'delete_all', 'save_folders_and_pdf', 'save_combined_pdf'
     
     Returns:
         success status
@@ -208,26 +208,93 @@ def clear_assignment_data(folder_path: str, save_mode: bool = False) -> bool:
     folder_name = os.path.basename(folder_path)
     parent_folder = os.path.dirname(folder_path)
     
-    if save_mode:
-        # Selective clear: Keep unzipped folders and combined PDF
+    # Delete ZIP files created from split/rezip in ALL modes
+    for file in os.listdir(folder_path):
+        if file.endswith('.zip') and 'Download' in file:
+            zip_path = os.path.join(folder_path, file)
+            safe_remove_file(zip_path)
+    
+    if save_mode == 'save_combined_pdf':
+        # Save only combined PDF: Extract it to root, delete everything else, then archive
         pdfs_folder = os.path.join(folder_path, "PDFs")
-        unreadable_folder = os.path.join(folder_path, "unreadable")
+        combined_pdf_source = None
         
-        # Find and keep only the combined PDF
-        combined_pdf = None
+        # Find combined PDF in PDFs folder (case-insensitive)
         if os.path.exists(pdfs_folder):
             for file in os.listdir(pdfs_folder):
-                if file.endswith('.pdf') and 'combined PDF' in file:
-                    combined_pdf = os.path.join(pdfs_folder, file)
+                if file.endswith('.pdf') and 'combined pdf' in file.lower():
+                    combined_pdf_source = os.path.join(pdfs_folder, file)
                     break
-            
-            # Delete individual PDFs
-            for file in os.listdir(pdfs_folder):
-                file_path = os.path.join(pdfs_folder, file)
-                if file_path != combined_pdf:
-                    safe_remove_file(file_path)
+        
+        if combined_pdf_source:
+            # Move combined PDF to root of processing folder
+            combined_pdf_dest = os.path.join(folder_path, os.path.basename(combined_pdf_source))
+            try:
+                shutil.copy2(combined_pdf_source, combined_pdf_dest)
+            except Exception:
+                pass
+        
+        # Delete PDFs folder
+        if os.path.exists(pdfs_folder):
+            safe_remove_tree(pdfs_folder)
         
         # Delete unreadable folder
+        unreadable_folder = os.path.join(folder_path, "unreadable")
+        if os.path.exists(unreadable_folder):
+            safe_remove_tree(unreadable_folder)
+        
+        # Delete unzipped folders
+        unzipped_folder = os.path.join(folder_path, "unzipped folders")
+        if os.path.exists(unzipped_folder):
+            safe_remove_tree(unzipped_folder)
+        
+        # Rename folder to 'archived [Assignment]'
+        match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
+        if match:
+            assignment_name = match.group(1)
+            new_folder_name = f"archived {assignment_name}"
+            new_folder_path = os.path.join(parent_folder, new_folder_name)
+            
+            # If archived folder already exists, remove it first
+            if os.path.exists(new_folder_path):
+                safe_remove_tree(new_folder_path)
+            
+            try:
+                os.rename(folder_path, new_folder_path)
+                log("CLEAR_ARCHIVED_TO", folder_name=new_folder_name)
+                return True
+            except Exception as e:
+                log("ERR_CLEAR_FAILED_RENAME", error=str(e))
+                return False
+        
+        return True
+        
+    elif save_mode == 'save_folders_and_pdf':
+        # Save folders and PDF: Keep unzipped folders, extract combined PDF to root, delete PDFs folder
+        pdfs_folder = os.path.join(folder_path, "PDFs")
+        combined_pdf_source = None
+        
+        # Find combined PDF in PDFs folder (case-insensitive)
+        if os.path.exists(pdfs_folder):
+            for file in os.listdir(pdfs_folder):
+                if file.endswith('.pdf') and 'combined pdf' in file.lower():
+                    combined_pdf_source = os.path.join(pdfs_folder, file)
+                    break
+        
+        if combined_pdf_source:
+            # Move combined PDF to root of processing folder
+            combined_pdf_dest = os.path.join(folder_path, os.path.basename(combined_pdf_source))
+            try:
+                shutil.copy2(combined_pdf_source, combined_pdf_dest)
+            except Exception:
+                pass
+        
+        # Delete PDFs folder (all individual PDFs)
+        if os.path.exists(pdfs_folder):
+            safe_remove_tree(pdfs_folder)
+        
+        # Delete unreadable folder
+        unreadable_folder = os.path.join(folder_path, "unreadable")
         if os.path.exists(unreadable_folder):
             safe_remove_tree(unreadable_folder)
         
@@ -253,7 +320,7 @@ def clear_assignment_data(folder_path: str, save_mode: bool = False) -> bool:
         log("CLEAR_SELECTIVE_COMPLETE")
         return True
     else:
-        # Full clear: Delete entire folder
+        # Full clear: Delete entire folder (delete_all mode)
         if safe_remove_tree(folder_path):
             log("CLEAR_DELETED", folder_name=folder_name)
             return True
@@ -362,14 +429,21 @@ def main():
     if len(sys.argv) < 3:
         print(json.dumps({
             "success": False,
-            "error": "Usage: python clear_data_cli.py <drive> <className> [assignmentName] [--save-folders-and-pdf]"
+            "error": "Usage: python clear_data_cli.py <drive> <className> [assignmentName] [--save-folders-and-pdf|--save-combined-pdf]"
         }))
         sys.exit(1)
     
     drive = sys.argv[1]
     class_name = sys.argv[2]
     assignment_name = sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith('--') else None
-    save_mode = "--save-folders-and-pdf" in sys.argv
+    
+    # Determine save mode
+    if "--save-folders-and-pdf" in sys.argv:
+        save_mode = 'save_folders_and_pdf'
+    elif "--save-combined-pdf" in sys.argv:
+        save_mode = 'save_combined_pdf'
+    else:
+        save_mode = 'delete_all'
     
     try:
         log("CLEAR_STARTING", class_name=class_name)
@@ -451,8 +525,11 @@ def main():
         
         # Clear the data
         log("CLEAR_TARGET_FOLDER", folder_name=os.path.basename(processing_folder))
-        if save_mode:
+        if save_mode == 'save_folders_and_pdf':
             log("CLEAR_MODE_SELECTIVE")
+        elif save_mode == 'save_combined_pdf':
+            # Add log message for this mode
+            pass  # No specific log message for this, just proceed
         else:
             log("CLEAR_MODE_FULL")
         

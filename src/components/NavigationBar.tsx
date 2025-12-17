@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, RotateCw, X, Folder, Sun, Moon, Minus, Square } from 'lucide-react';
+import { Settings, X, Folder, Sun, Moon, Minus, Square } from 'lucide-react';
 import ServerStatusIndicator from './ServerStatusIndicator';
 import {
   closeWindow,
@@ -21,7 +21,6 @@ interface NavigationBarProps {
   selectedClass: string;
   handleClassChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   classOptions: ClassOption[];
-  handleRefresh: () => void;
   handleOpenDownloads: () => void;
   serverStatus: ServerStatus;
   metalButtonClass: (isDark: boolean, textColor?: string) => string;
@@ -37,7 +36,6 @@ export default function NavigationBar({
   selectedClass,
   handleClassChange,
   classOptions,
-  handleRefresh,
   handleOpenDownloads,
   serverStatus,
   metalButtonClass,
@@ -77,11 +75,12 @@ export default function NavigationBar({
           </select>
 
           <button
-            onClick={handleRefresh}
+            onClick={reloadWindow}
             className={`px-3 py-1.5 rounded-lg transition-all border shadow-lg text-sm font-medium ${metalButtonClass(isDark)}`}
             style={metalButtonStyle(isDark)}
+            title="Reset application"
           >
-            REFRESH
+            RELOAD
           </button>
 
           <button
@@ -110,15 +109,6 @@ export default function NavigationBar({
             title="Settings"
           >
             <Settings size={16} />
-          </button>
-
-          <button
-            onClick={reloadWindow}
-            className={`p-1.5 rounded-lg transition-all border shadow-lg ${metalButtonClass(isDark)}`}
-            style={metalButtonStyle(isDark)}
-            title="Reload"
-          >
-            <RotateCw size={16} />
           </button>
 
           <div className="w-px h-6 bg-gray-400 mx-2"></div>

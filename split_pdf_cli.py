@@ -10,17 +10,10 @@ import json
 import zipfile
 import shutil
 import re
-from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
-from rich.table import Table
-from rich import box
-from grading_processor import run_reverse_process, format_error_message
+from grading_processor import run_reverse_process
+from grading_helpers import format_error_message
 from config_reader import get_downloads_path, get_rosters_path
 from user_messages import log
-
-# Initialize Rich console for clean output
-console = Console()
 
 class LogFormatter:
     """Handles formatting and grouping of log messages for clean output"""
@@ -240,28 +233,30 @@ def generate_index_html(student_folders, processing_folder, original_index_path=
     
     return '\n'.join(html_lines)
 
-def rezip_folders(drive, class_name, assignment_name, original_zip_name):
+def rezip_folders(drive, class_name, assignment_name, original_zip_name, processing_folder=None, unzipped_folder=None):
     """Rezip the processed folders back into a ZIP file"""
     try:
-        # Get configured rosters path
-        rosters_path = get_rosters_path()
-        class_folder_path = os.path.join(rosters_path, class_name)
-        
-        # Try to find processing folder - handle both new format (with class code) and old format
-        from grading_processor import extract_class_code
-        class_code = extract_class_code(class_name)
-        
-        # Try new format first (with class code)
-        if class_code:
-            processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
-            if not os.path.exists(processing_folder):
-                # Fallback to old format (without class code)
+        # Use provided folders if available (from run_reverse_process), otherwise find them
+        if not processing_folder or not unzipped_folder:
+            # Get configured rosters path
+            rosters_path = get_rosters_path()
+            class_folder_path = os.path.join(rosters_path, class_name)
+            
+            # Try to find processing folder - handle both new format (with class code) and old format
+            from grading_processor import extract_class_code
+            class_code = extract_class_code(class_name)
+            
+            # Try new format first (with class code)
+            if class_code:
+                processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
+                if not os.path.exists(processing_folder):
+                    # Fallback to old format (without class code)
+                    processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+            else:
+                # No class code, use old format
                 processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
-        else:
-            # No class code, use old format
-            processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
-        
-        unzipped_folder = os.path.join(processing_folder, "unzipped folders")
+            
+            unzipped_folder = os.path.join(processing_folder, "unzipped folders")
         
         if not os.path.exists(unzipped_folder):
             log("SPLIT_UNZIPPED_NOT_FOUND")
@@ -270,7 +265,7 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name):
         # Create new ZIP file in grade processing folder
         new_zip_path = os.path.join(processing_folder, original_zip_name)
         
-        log("SPLIT_CREATING_ZIP", filename=original_zip_name)
+        # Removed verbose logging: "SPLIT_CREATING_ZIP"
         
         # Collect all student folders from unzipped folders directory
         student_folders = []
@@ -289,7 +284,7 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name):
             # Copy it to index.html for use in ZIP
             import shutil
             shutil.copy2(original_index_path, temp_index)
-            log("SPLIT_USING_PRESERVED_INDEX")
+            # Removed verbose logging: "SPLIT_USING_PRESERVED_INDEX"
         elif os.path.exists(temp_index):
             # The index.html from extraction exists - use it as-is
             index_html_path = temp_index
@@ -299,15 +294,15 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name):
                 shutil.copy2(temp_index, original_index_path)
             except Exception:
                 pass
-            log("SPLIT_USING_EXTRACTED_INDEX")
+            # Removed verbose logging: "SPLIT_USING_EXTRACTED_INDEX"
         else:
             # No original exists - generate a new one (fallback)
-            log("SPLIT_NO_ORIGINAL_INDEX")
+            # Removed verbose logging: "SPLIT_NO_ORIGINAL_INDEX"
             index_html_content = generate_index_html(student_folders, unzipped_folder, None)
             index_html_path = temp_index
             with open(index_html_path, 'w', encoding='utf-8') as f:
                 f.write(index_html_content)
-            log("SPLIT_GENERATED_NEW_INDEX")
+            # Removed verbose logging: "SPLIT_GENERATED_NEW_INDEX"
         
         # Check for any other files in the unzipped folder that should be included
         other_files = []
@@ -324,13 +319,13 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name):
             # First, add index.html to the root of the ZIP
             zip_file_to_add = temp_index if os.path.exists(temp_index) else index_html_path
             zipf.write(zip_file_to_add, 'index.html')
-            log("SPLIT_ADDED_INDEX_TO_ZIP")
+            # Removed verbose logging: "SPLIT_ADDED_INDEX_TO_ZIP"
             
             # Add any other root-level files that were in the original ZIP
             for other_file in other_files:
                 file_name = os.path.basename(other_file)
                 zipf.write(other_file, file_name)
-                log("SPLIT_ADDED_ROOT_FILE", filename=file_name)
+                # Removed verbose logging: "SPLIT_ADDED_ROOT_FILE"
             
             # Add all student folders to the ZIP
             for folder_path in student_folders:
@@ -342,12 +337,9 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name):
                         # Calculate relative path from unzipped folder
                         arcname = os.path.relpath(file_path, unzipped_folder)
                         zipf.write(file_path, arcname)
-                        # Store in formatter for clean table display (don't log individually)
-                        formatter.file_additions.append(arcname)
-                        # Log to catalog
-                        log("SPLIT_ADDED_TO_ZIP", filename=arcname)
+                        # Removed verbose logging: "SPLIT_ADDED_TO_ZIP"
         
-        log("SPLIT_ZIP_CREATED", filename=new_zip_path)
+        # Removed verbose logging: "SPLIT_ZIP_CREATED"
         return True
         
     except Exception as e:
@@ -364,7 +356,7 @@ def main():
             "error": error_msg,
             "logs": [
                 "📦 Starting PDF split and rezip...",
-                f"❌ Error: {error_msg}",
+                f"❌ {error_msg}",
                 "",
                 "✅ Done"
             ]
@@ -400,7 +392,7 @@ def main():
         processing_errors = []
         
         # Run the reverse process
-        log("SPLIT_SPLITTING_PDF")
+        # Removed verbose logging: "SPLIT_SPLITTING_PDF"
         result = run_reverse_process(drive, class_name, pdf_path)
         
         students_count = len(result.submitted) if hasattr(result, 'submitted') else 0
@@ -433,14 +425,17 @@ def main():
         
         rezip_success = False
         if original_zip_name and assignment_name:
-            log("EMPTY_LINE")
-            log("SPLIT_CREATING_ZIP_FILE", filename=original_zip_name)
+            # Removed verbose logging: "SPLIT_CREATING_ZIP_FILE"
             
-            # Note: rezip_folders will use log() directly now
-            rezip_success = rezip_folders(drive, class_name, assignment_name, original_zip_name)
+            # Pass processing_folder and unzipped_folder from result if available
+            processing_folder = getattr(result, 'processing_folder', None)
+            unzipped_folder = getattr(result, 'unzipped_folder', None)
+            rezip_success = rezip_folders(drive, class_name, assignment_name, original_zip_name, 
+                                         processing_folder, unzipped_folder)
             
             if rezip_success:
-                log("SPLIT_ZIP_CREATED", filename=original_zip_name)
+                # Removed verbose logging: "SPLIT_ZIP_CREATED"
+                pass
             else:
                 log("SPLIT_ZIP_FAILED")
                 processing_errors.append("ZIP creation failed")
@@ -448,14 +443,14 @@ def main():
             log("SPLIT_NO_NAME")
             processing_errors.append("Could not determine assignment name or ZIP name")
         
-        # Build simplified output
+        # Build simplified output - only show errors if they exist
         if processing_errors:
             log("EMPTY_LINE")
             log("SPLIT_ERRORS_HEADER")
             for error in processing_errors:
                 log("SPLIT_ERROR_ITEM", error=error)
         
-        log("EMPTY_LINE")
+        # Removed empty line before completion
         log("SPLIT_COMPLETED")
         
         # Output JSON to stdout (for backend)

@@ -7,7 +7,8 @@ from user_messages import log
 
 def backup_existing_folder(
     folder_path: str, 
-    overwrite: bool = False
+    overwrite: bool = False,
+    suppress_logs: bool = False
 ) -> bool:
     """
     If folder exists, either delete it (if overwrite=True) or rename it to a backup.
@@ -56,15 +57,17 @@ def backup_existing_folder(
                 break
             backup_number += 1
         
-        log("EMPTY_LINE")
-        log("BACKUP_CREATING")
-        log("BACKUP_RENAME_FROM", old_name=base_name)
-        log("BACKUP_RENAME_TO", new_name=backup_name)
+        if not suppress_logs:
+            log("EMPTY_LINE")
+            log("BACKUP_CREATING")
+            log("BACKUP_RENAME_FROM", old_name=base_name)
+            log("BACKUP_RENAME_TO", new_name=backup_name)
         
         try:
             os.rename(folder_path, backup_path)
-            log("BACKUP_SUCCESS")
-            log("EMPTY_LINE")
+            if not suppress_logs:
+                log("BACKUP_SUCCESS")
+                log("EMPTY_LINE")
             return True
         except Exception as e:
             log("BACKUP_CREATE_FAILED", error=str(e))

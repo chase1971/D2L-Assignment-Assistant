@@ -56,7 +56,7 @@ MESSAGES = {
     "COMPLETION_SEARCHING": ("🔍 Searching for assignment ZIP...", "INFO", "I1011"),
     "COMPLETION_PROCESSING": ("📦 Processing: {filename}", "INFO", "I1012"),
     "COMPLETION_SUCCESS": ("✅ Completion processing completed!", "SUCCESS", "S1007"),
-    "COMPLETION_AUTO_ASSIGN": ("✅ Auto-assigned {count} points to {students} submissions", "SUCCESS", "S1008"),
+    "COMPLETION_AUTO_ASSIGNED": ("✅ Auto-assigned {count} points to {students} submissions", "SUCCESS", "S1008"),
     "COMPLETION_VALIDATION": ("📋 Validating student submissions...", "INFO", "I1013"),
     "COMPLETION_VALIDATED": ("✅ Validation complete", "SUCCESS", "S1009"),
     
@@ -156,7 +156,7 @@ MESSAGES = {
     "ERR_COULD_NOT_BACKUP": ("   Could not create backup: {error}", "ERROR", "E1023"),
     "ERR_COULD_NOT_OPEN_PDF": ("   Could not open PDF: {error}", "ERROR", "E1024"),
     "ERR_IMPORT_FILE": ("   Could not setup Import File: {error}", "ERROR", "E1025"),
-    "ERR_GENERIC": ("❌ Error: {error}", "ERROR", "E1026"),
+    "ERR_GENERIC": ("❌ {error}", "ERROR", "E1026"),
     
     # =========================================================================
     # SUBMISSION PROCESSING
@@ -264,11 +264,12 @@ MESSAGES = {
     "SPLIT_SUCCESS_COUNT": ("✅ Successfully split PDF for {count} students", "SUCCESS", "S1032"),
     "SPLIT_NO_STUDENTS": ("⚠️ No students processed - check if combined PDF exists", "WARNING", "W1015"),
     "SPLIT_CREATING_ZIP_FILE": ("Creating ZIP file: {filename}...", "INFO", "I1087"),
+    "SPLIT_UNZIPPED_NOT_FOUND": ("❌ Unzipped folders directory not found - cannot create ZIP", "ERROR", "E1042"),
     "SPLIT_ZIP_FAILED": ("⚠️ ZIP creation failed, but PDFs were split", "WARNING", "W1016"),
     "SPLIT_NO_NAME": ("⚠️ Could not determine assignment name or ZIP name, skipping rezip", "WARNING", "W1017"),
     "SPLIT_ERRORS_HEADER": ("❌ Errors:", "ERROR", "E1040"),
     "SPLIT_ERROR_ITEM": ("   {error}", "ERROR", "E1041"),
-    "SPLIT_COMPLETED": ("✅ completed!", "SUCCESS", "S1033"),
+    "SPLIT_COMPLETED": ("✅ Split PDF and rezip completed!", "SUCCESS", "S1033"),
     
     # =========================================================================
     # PROCESS COMPLETION CLI SPECIFIC
@@ -287,7 +288,7 @@ MESSAGES = {
     "COMPLETION_OPENED_PDF": ("Opened PDF file: {filename}", "INFO", "I1098"),
     "COMPLETION_COULD_NOT_OPEN_PDF": ("Could not open PDF: {error}", "WARNING", "W1018"),
     "COMPLETION_HEADER_COMPLETE": ("COMPLETION PROCESSING COMPLETED", "SUCCESS", "S1035"),
-    "COMPLETION_FAILED_HEADER": ("COMPLETION PROCESSING FAILED", "ERROR", "E1042"),
+    "COMPLETION_FAILED_HEADER": ("COMPLETION PROCESSING FAILED", "ERROR", "E1043"),
     "COMPLETION_FINISHED": ("PROCESSING FINISHED", "INFO", "I1099"),
     
     # =========================================================================
@@ -297,7 +298,9 @@ MESSAGES = {
     "OPENING_PDF": ("Opening combined PDF for manual grading...", "INFO", "I1101"),
     "SEPARATOR_LINE": ("-" * 40, "INFO", "I1102"),
     "SEPARATOR_DOUBLE": ("=" * 60, "INFO", "I1103"),
+    "DOUBLE_SEPARATOR_LINE": ("=" * 60, "INFO", "I1103"),  # Alias for SEPARATOR_DOUBLE
     "EMPTY_LINE": ("", "INFO", "I1104"),
+    "ERR_UNEXPECTED": ("❌ {error}", "ERROR", "E1044"),
     
     # =========================================================================
     # DEVELOPER ERROR LOGGING (D2xxx series - not shown to users)

@@ -8,7 +8,8 @@ import sys
 import os
 import json
 from config_reader import get_downloads_path
-from grading_processor import format_error_message, find_zip_file, run_grading_process
+from grading_processor import find_zip_file, run_grading_process
+from grading_helpers import format_error_message
 from user_messages import log, log_raw
 
 

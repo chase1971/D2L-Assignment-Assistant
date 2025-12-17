@@ -70,7 +70,7 @@ def process_submissions(
         fp = os.path.join(extraction_folder, fld)
         
         # Match to roster
-        user, hit = _match_student_to_roster(name, import_df)
+        user, hit = _match_student_to_roster(name, import_df, is_completion_process)
         if not user:
             unmatched_count += 1
             student_errors.append(f"{name}: Could not match to roster")
@@ -240,7 +240,8 @@ def _match_hyphen_variations(name: str, import_df: pd.DataFrame) -> pd.DataFrame
 
 def _match_fuzzy_parts(
     name: str, 
-    import_df: pd.DataFrame
+    import_df: pd.DataFrame,
+    is_completion_process: bool = False
 ) -> pd.DataFrame:
     """
     Strategy 4: Fuzzy part matching (fallback).
@@ -272,8 +273,10 @@ def _match_fuzzy_parts(
         matching_rows.sort(key=lambda x: x[1], reverse=True)
         best_idx = matching_rows[0][0]
         hit = import_df.iloc[[best_idx]]
-        roster_name = f"{hit.iloc[0]['First Name']} {hit.iloc[0]['Last Name']}"
-        log("SUBMISSION_NAME_PARTS_MATCH", name=name, roster_name=roster_name)
+        # Only log fuzzy matching for quiz processing, not completion processing
+        if not is_completion_process:
+            roster_name = f"{hit.iloc[0]['First Name']} {hit.iloc[0]['Last Name']}"
+            log("SUBMISSION_NAME_PARTS_MATCH", name=name, roster_name=roster_name)
         return hit
     
     return pd.DataFrame()
@@ -281,7 +284,8 @@ def _match_fuzzy_parts(
 
 def _match_student_to_roster(
     name: str,
-    import_df: pd.DataFrame
+    import_df: pd.DataFrame,
+    is_completion_process: bool = False
 ) -> Tuple[Optional[str], Optional[pd.DataFrame]]:
     """
     Match student name from submission folder to roster.
@@ -325,7 +329,7 @@ def _match_student_to_roster(
     
     # Strategy 4: Fuzzy part matching
     if len(hit) != 1:
-        hit = _match_fuzzy_parts(name, import_df)
+        hit = _match_fuzzy_parts(name, import_df, is_completion_process)
     
     if len(hit) != 1:
         return None, None

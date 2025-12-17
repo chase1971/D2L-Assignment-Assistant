@@ -59,3 +59,8 @@ def write_log(level: str, code: str, message: str):
         # Don't break the main application if logging fails
         pass
 
+
+
+
+
+

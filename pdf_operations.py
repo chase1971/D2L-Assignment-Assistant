@@ -147,27 +147,14 @@ def split_combined_pdf(
     extraction_folder: str
 ) -> int:
     """Split a combined PDF back into individual student PDFs."""
-    log("EMPTY_LINE")
-    log("SEPARATOR_LINE")
-    log("PDF_SPLITTING_HEADER")
-    log("SEPARATOR_LINE")
+    # Removed verbose logging: separators, headers, page counts, name lists
     
     try:
         reader = PdfReader(combined_pdf_path)
         total_pages = len(reader.pages)
         
-        log("PDF_TOTAL_PAGES", pages=total_pages)
-        log("PDF_EXTRACTING_NAMES")
-        
         # Extract names from pages
         extracted_names = _extract_names_from_pages(reader, total_pages)
-        
-        log("PDF_EXTRACTED_COUNT", count=len(extracted_names))
-        log("PDF_FIRST_NAMES_HEADER")
-        for i, name in enumerate(extracted_names[:10], 1):
-            log("PDF_NAME_ITEM", num=i, name=name)
-        if len(extracted_names) > 10:
-            log("PDF_MORE_NAMES", count=len(extracted_names) - 10)
         
         # Build name map from import file
         import_name_map = _build_import_name_map(import_df)
@@ -178,9 +165,7 @@ def split_combined_pdf(
             import_name_map
         )
         
-        log("EMPTY_LINE")
-        log("PDF_SPLIT_SUCCESS", count=students_processed)
-        log("EMPTY_LINE")
+        # Removed verbose logging: success message will be logged by caller
         
         return students_processed
         
@@ -377,8 +362,7 @@ def _process_student_pdf(
         log("PDF_NO_FOLDER_FOR", name=student_name)
         return False
     
-    log("PDF_PROCESSING_STUDENT", name=student_name, pages=len(student_pages))
-    log("PDF_FOUND_FOLDER", folder=os.path.basename(student_folder))
+    # Removed verbose logging: processing, folder found, replacing, complete messages
     
     # Create PDF with student's pages
     writer = PdfWriter()
@@ -396,12 +380,8 @@ def _process_student_pdf(
     
     target_pdf = os.path.join(student_folder, original_pdfs[0])
     
-    log("PDF_REPLACING", filename=original_pdfs[0])
-    
     with open(target_pdf, "wb") as f:
         writer.write(f)
-    
-    log("PDF_STUDENT_COMPLETE", name=student_name, pages=len(student_pages), filename=original_pdfs[0])
     
     return True
 

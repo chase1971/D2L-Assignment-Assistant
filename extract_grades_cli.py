@@ -652,6 +652,24 @@ def main() -> None:
             low_confidence_students, skipped_students, roster_names
         )
         
+        # Prepare confidence scores data for frontend
+        confidence_scores = []
+        if grades_result:
+            for name, grade_info in grades_result.items():
+                if isinstance(grade_info, dict):
+                    confidence_scores.append({
+                        "name": name,
+                        "grade": grade_info.get('grade', 'No grade found'),
+                        "confidence": grade_info.get('confidence', 0.0)
+                    })
+        
+        # Output JSON response with confidence scores (on new line for server parsing)
+        success_response = {
+            "success": True,
+            "confidenceScores": confidence_scores
+        }
+        print("\n" + json.dumps(success_response), flush=True)
+        
     except Exception as e:
         # Use standardized error formatting
         friendly_error = format_error_message(e)

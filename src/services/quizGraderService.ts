@@ -10,6 +10,12 @@ export interface LogEntry {
   message: string;
 }
 
+export interface ConfidenceScore {
+  name: string;
+  grade: string;
+  confidence: number;
+}
+
 export interface ApiResult {
   success: boolean;
   error?: string;
@@ -23,6 +29,7 @@ export interface ApiResult {
   assignmentName?: string;  // For split PDF upload response
   assignment_name?: string;  // From Python backend
   combined_pdf_path?: string;  // From Python backend
+  confidenceScores?: ConfidenceScore[];  // For grade extraction
   config?: {
     developerMode?: boolean;
   };
@@ -122,7 +129,6 @@ export const processQuizzes = (drive: string, selectedClass: string, addLog: Log
   apiCall({
     endpoint: '/quiz/process',
     body: { drive, className: selectedClass },
-    logMessage: '📡 Sending process request to backend...',
     errorMessage: 'Failed to process quizzes',
     addLog
   });
@@ -131,7 +137,6 @@ export const processSelectedQuiz = (drive: string, selectedClass: string, zipPat
   apiCall({
     endpoint: '/quiz/process-selected',
     body: { drive, className: selectedClass, zipPath },
-    logMessage: '📡 Sending selected quiz processing request to backend...',
     errorMessage: 'Failed to process selected quiz',
     addLog
   });
@@ -140,7 +145,6 @@ export const processCompletion = (drive: string, selectedClass: string, dontOver
   apiCall({
     endpoint: '/quiz/process-completion',
     body: { drive, className: selectedClass, dontOverride: dontOverride || false },
-    logMessage: '📡 Sending completion processing request to backend...',
     errorMessage: 'Failed to process completion',
     addLog
   });
@@ -149,7 +153,6 @@ export const processSelectedCompletion = (drive: string, selectedClass: string, 
   apiCall({
     endpoint: '/quiz/process-completion-selected',
     body: { drive, className: selectedClass, zipPath, dontOverride: dontOverride || false },
-    logMessage: '📡 Sending selected completion processing request to backend...',
     errorMessage: 'Failed to process selected completion',
     addLog
   });
@@ -166,7 +169,6 @@ export const splitPdf = (drive: string, selectedClass: string, assignmentName: s
   apiCall({
     endpoint: '/quiz/split-pdf',
     body: { drive, className: selectedClass, assignmentName, pdfPath },
-    logMessage: '📡 Sending split PDF request to backend...',
     errorMessage: 'Failed to split PDF',
     addLog
   });
@@ -264,16 +266,14 @@ export const openDownloads = (addLog: LogCallback): Promise<ApiResult> =>
   apiCall({
     endpoint: '/quiz/open-folder',
     body: { drive: 'C', className: 'DOWNLOADS' },
-    logMessage: '📡 Sending open downloads request to backend...',
     errorMessage: 'Failed to open downloads folder',
     addLog
   });
 
-export const clearAllData = (drive: string, selectedClass: string, assignmentName: string | null, saveFoldersAndPdf: boolean, addLog: LogCallback): Promise<ApiResult> =>
+export const clearAllData = (drive: string, selectedClass: string, assignmentName: string | null, saveFoldersAndPdf: boolean, saveCombinedPdf: boolean, addLog: LogCallback): Promise<ApiResult> =>
   apiCall({
     endpoint: '/quiz/clear-data',
-    body: { drive, className: selectedClass, assignmentName, saveFoldersAndPdf },
-    logMessage: '📡 Sending clear request to backend...',
+    body: { drive, className: selectedClass, assignmentName, saveFoldersAndPdf, saveCombinedPdf },
     errorMessage: 'Failed to clear data',
     addLog
   });
@@ -289,7 +289,6 @@ export const clearArchivedData = (drive: string, selectedClass: string, addLog: 
   apiCall({
     endpoint: '/quiz/clear-archived-data',
     body: { drive, className: selectedClass },
-    logMessage: '📡 Sending clear archived data request to backend...',
     errorMessage: 'Failed to clear archived data',
     addLog
   });

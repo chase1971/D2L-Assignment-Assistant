@@ -298,12 +298,7 @@ def update_import_file(
         Updated DataFrame
     """
     try:
-        log("EMPTY_LINE")
-        log("SEPARATOR_LINE")
-        log("IMPORT_UPDATE_HEADER")
-        log("SEPARATOR_LINE")
-        log("IMPORT_CURRENT_COLUMNS", columns=list(import_df.columns))
-        log("EMPTY_LINE")
+        # Removed verbose logging: header, separators, column lists, etc.
         
         # Step 1: Clean up any corrupted columns after End-of-Line Indicator
         import_df = _cleanup_columns_after_eol(import_df)
@@ -311,34 +306,37 @@ def update_import_file(
         # Create column name
         column_name = f"{assignment_name} Points Grade"
         
-        log("IMPORT_NEW_COLUMN", name=column_name)
+        # Removed verbose logging: "New column name"
         
         # Handle dont_override flag
         if dont_override:
-            _handle_dont_override_mode(import_df, column_name)
+            # Get the actual column name used (may be different if original exists)
+            actual_column_name = _handle_dont_override_mode(import_df, column_name)
         else:
             import_df = _handle_override_mode(import_df, column_name)
+            actual_column_name = column_name
         
-        # Update grades
-        log("IMPORT_UPDATING_GRADES")
+        # Update grades using the actual column name
+        # Removed verbose logging: "Updating grades..."
         
         fuzzy_match_warnings = _update_grades(
-            import_df, column_name, submitted, unreadable, 
+            import_df, actual_column_name, submitted, unreadable, 
             grades_map
         )
         
-        log("IMPORT_SAVING_TO", path=import_file_path)
+        # Removed verbose logging: "Saving to..."
         
         # Save the file
         _save_import_file(import_df, import_file_path)
         
-        log("EMPTY_LINE")
-        if fuzzy_match_warnings:
+        # Only show fuzzy match warnings for quiz processing (when grades_map is provided)
+        # Completion processing doesn't need these since it auto-assigns 10 points
+        if fuzzy_match_warnings and grades_map is not None:
+            log("EMPTY_LINE")
             log("IMPORT_FUZZY_HEADER")
             for warning in fuzzy_match_warnings:
                 log("IMPORT_FUZZY_ITEM", warning=warning)
             log("EMPTY_LINE")
-        log("EMPTY_LINE")
         
         return import_df
     
@@ -371,9 +369,7 @@ def _cleanup_columns_after_eol(import_df: pd.DataFrame) -> pd.DataFrame:
     
     if eol_index < len(import_df.columns) - 1:
         # There are columns after End-of-Line Indicator - remove them
-        columns_to_remove = list(import_df.columns[eol_index + 1:])
-        if columns_to_remove:
-            log("IMPORT_CLEANUP_COLUMNS", count=len(columns_to_remove))
+        # Removed verbose logging: "Cleaning up X corrupted columns"
         
         # Keep only columns up to and including End-of-Line Indicator
         import_df = import_df.iloc[:, :eol_index + 1].copy()
@@ -384,28 +380,38 @@ def _cleanup_columns_after_eol(import_df: pd.DataFrame) -> pd.DataFrame:
 def _handle_dont_override_mode(
     import_df: pd.DataFrame, 
     column_name: str
-) -> None:
-    """Handle don't override mode - insert new column before End-of-Line Indicator."""
-    log("IMPORT_MODE_DONT_OVERRIDE")
+) -> str:
+    """Handle don't override mode - insert new column before End-of-Line Indicator.
+    
+    Returns:
+        The actual column name used (may be different if original already exists)
+    """
+    # Removed verbose logging: mode messages, column exists, added column
     
     # Ensure we have at least 5 columns (A-E)
     if len(import_df.columns) < REQUIRED_COLUMNS_COUNT:
-        log("IMPORT_WARNING_FEW_COLUMNS", required=REQUIRED_COLUMNS_COUNT)
+        # Removed verbose logging: warning about few columns
         while len(import_df.columns) < REQUIRED_COLUMNS_COUNT:
             # Use empty string for column name to avoid "Unnamed" issues
             import_df[f'_temp_col_{len(import_df.columns)}'] = ""
     
-    # Check if column already exists
+    # Find the End-of-Line Indicator by name (not just last column)
+    eol_index = _find_end_of_line_indicator_index(import_df)
+    
+    # If column already exists, create a new one with a number suffix to avoid overriding
+    # This ensures we don't overwrite previous grades when "don't override" is selected
+    final_column_name = column_name
     if column_name in import_df.columns:
-        log("IMPORT_COLUMN_EXISTS", name=column_name)
-    else:
-        # Find the End-of-Line Indicator by name (not just last column)
-        eol_index = _find_end_of_line_indicator_index(import_df)
-        eol_col_name = import_df.columns[eol_index]
-        
-        # Insert new grade column just before End-of-Line Indicator
-        import_df.insert(eol_index, column_name, "")
-        log("IMPORT_ADDED_COLUMN", name=column_name, index=eol_index, before=eol_col_name)
+        # Find an available name by adding a number suffix
+        counter = 2
+        while f"{column_name} {counter}" in import_df.columns:
+            counter += 1
+        final_column_name = f"{column_name} {counter}"
+    
+    # Insert new grade column just before End-of-Line Indicator
+    import_df.insert(eol_index, final_column_name, "")
+    
+    return final_column_name
 
 
 def _handle_override_mode(
@@ -413,7 +419,7 @@ def _handle_override_mode(
     column_name: str
 ) -> pd.DataFrame:
     """Handle override mode - reset columns, keeping first 5 fixed columns and End-of-Line Indicator."""
-    log("IMPORT_MODE_OVERRIDE")
+    # Removed verbose logging: mode, fixed columns, EOL info, total columns, removing old, result columns, added at index
     
     # Find the End-of-Line Indicator by name
     eol_index = _find_end_of_line_indicator_index(import_df)
@@ -422,24 +428,13 @@ def _handle_override_mode(
     # First 5 columns are fixed: OrgDefinedId, Username, First Name, Last Name, Email
     first_five_columns = list(import_df.columns[:REQUIRED_COLUMNS_COUNT])
     
-    log("IMPORT_FIXED_COLUMNS", count=REQUIRED_COLUMNS_COUNT-1, columns=first_five_columns)
-    log("IMPORT_EOL_INFO", name=eol_col_name, index=eol_index)
-    log("IMPORT_TOTAL_COLUMNS", count=len(import_df.columns))
-    
     # Keep first 5 columns + End-of-Line Indicator (ignore any columns after it)
     columns_to_keep = first_five_columns + [eol_col_name]
-    
-    if eol_index > REQUIRED_COLUMNS_COUNT:
-        columns_removed = list(import_df.columns[REQUIRED_COLUMNS_COUNT:eol_index])
-        log("IMPORT_REMOVING_OLD", count=len(columns_removed), columns=columns_removed)
     
     import_df = import_df[columns_to_keep].copy()
     
     # Insert the new grade column at index 5 (after Email, before End-of-Line Indicator)
     import_df.insert(END_OF_LINE_COLUMN_INDEX, column_name, "")
-    
-    log("IMPORT_RESULT_COLUMNS", count=len(import_df.columns))
-    log("IMPORT_ADDED_AT_INDEX", name=column_name)
     
     return import_df
 

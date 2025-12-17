@@ -10,7 +10,6 @@ from typing import Optional, Tuple, Dict, Any, Callable, List, Set
 
 # Third-party
 import pandas as pd
-from rich.console import Console
 
 # Local
 from backup_utils import backup_existing_folder
@@ -20,85 +19,20 @@ from pdf_operations import create_combined_pdf, split_combined_pdf
 from submission_processor import process_submissions
 from file_utils import open_file_with_default_app
 from user_messages import log, format_msg
+from grading_helpers import (
+    make_error_response,
+    extract_assignment_name_from_zip,
+    get_student_display_name,
+    get_student_names_list,
+    format_error_message,
+    extract_class_code,
+    get_versioned_pdf_path
+)
 
 
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
-
-
-def make_error_response(message_id: str, **kwargs) -> Dict[str, Any]:
-    """
-    Create a standardized error response dict using the message catalog.
-    
-    Args:
-        message_id: The message ID from the catalog
-        **kwargs: Format variables for the message
-    
-    Returns:
-        Dict with success=False and formatted error message
-    """
-    log(message_id, **kwargs)  # Log the error to stdout
-    return {
-        "success": False,
-        "error": format_msg(message_id, **kwargs)
-    }
-
-
-def extract_assignment_name_from_zip(zip_path: str) -> str:
-    """
-    Extract assignment name from a ZIP filename.
-
-    Removes the " Download..." suffix that D2L adds to exported ZIPs.
-
-    Args:
-        zip_path: Full path to the ZIP file
-
-    Returns:
-        Assignment name extracted from filename
-
-    Example:
-        "Quiz 4 (7.1-7.4) Download Oct 21 2025.zip" -> "Quiz 4 (7.1-7.4)"
-    """
-    base = os.path.splitext(os.path.basename(zip_path))[0]
-    return base.split(" Download")[0].strip()
-
-
-def get_student_display_name(import_df: pd.DataFrame, username: str) -> str:
-    """
-    Get formatted display name for a student from the import DataFrame.
-
-    Args:
-        import_df: DataFrame with roster data
-        username: Student's username to look up
-
-    Returns:
-        Title-cased "First Last" name string
-    """
-    row = import_df[import_df["Username"] == username]
-    if len(row) == 0:
-        return username
-    first = row["First Name"].iloc[0]
-    last = row["Last Name"].iloc[0]
-    return f"{first.title()} {last.title()}"
-
-
-def get_student_names_list(
-    import_df: pd.DataFrame,
-    usernames: Set[str]
-) -> List[str]:
-    """
-    Convert a set of usernames to a list of formatted display names.
-
-    Args:
-        import_df: DataFrame with roster data
-        usernames: Set of usernames to convert
-
-    Returns:
-        List of title-cased "First Last" name strings
-    """
-    return [get_student_display_name(import_df, u) for u in usernames]
-
 
 def find_zip_file(
     downloads_path: str, 
@@ -149,87 +83,6 @@ def find_zip_file(
     return zip_files[0], None
 
 
-def format_error_message(e: Exception) -> str:
-    """
-    Convert an exception into a user-friendly error message.
-    Uses consistent wording for common error types.
-    """
-    error_str = str(e).lower()
-    
-    # Check for common error patterns and return consistent messages
-    if "being used by another process" in error_str or "locked" in error_str:
-        return "❌ The file is being used by another process"
-    
-    if "permission denied" in error_str or "errno 13" in error_str or "access denied" in error_str:
-        return "❌ Cannot access file - permission denied"
-    
-    if "could not read" in error_str or "unable to read" in error_str or "cannot read" in error_str:
-        return "❌ Unable to read file"
-    
-    if "not found" in error_str or "no such file" in error_str or "does not exist" in error_str:
-        return f"❌ File not found"
-    
-    if "corrupted" in error_str or "invalid" in error_str or "bad" in error_str:
-        return "❌ File is corrupted or invalid"
-    
-    # For other errors, return the original message with emoji prefix
-    return f"❌ {str(e)}"
-
-
-def extract_class_code(class_folder_name: str) -> str:
-    """
-    Extract class code (e.g., "FM 4202") from class folder name.
-    
-    Examples:
-        "TTH 11-1220 FM 4202" -> "FM 4202"
-        "MW 930-1050 CA 4105" -> "CA 4105"
-    """
-    # Class code is typically the last 7 characters (2 letters, space, 4 digits)
-    # But handle variations - look for pattern: 2 letters, space, 4 digits at the end
-    match = re.search(r'([A-Z]{2}\s+\d{4})\s*$', class_folder_name)
-    if match:
-        return match.group(1)
-    # Fallback: try to extract last 7 characters
-    if len(class_folder_name) >= 7:
-        return class_folder_name[-7:].strip()
-    return ""
-
-
-def get_versioned_pdf_path(output_folder: str, assignment_name: str, class_code: str = "") -> str:
-    """
-    Generate a versioned PDF filename based on assignment name, class code, and "combined PDF".
-    
-    Format: "{assignment_name} {class_code} combined PDF.pdf"
-    If the file already exists, appends v2, v3, etc.
-    
-    Examples:
-        - First run: "Quiz 4 (7.1 - 7.4) FM 4202 combined PDF.pdf"
-        - Second run: "Quiz 4 (7.1 - 7.4) FM 4202 combined PDF v2.pdf"
-    """
-    # Clean assignment name for use as filename (remove invalid chars)
-    safe_name = re.sub(r'[<>:"/\\|?*]', '', assignment_name).strip()
-    
-    # Build filename with class code and "combined PDF"
-    if class_code:
-        base_filename = f"{safe_name} {class_code} combined PDF"
-    else:
-        base_filename = f"{safe_name} combined PDF"
-    
-    base_path = os.path.join(output_folder, f"{base_filename}.pdf")
-    
-    # If doesn't exist, use the base name
-    if not os.path.exists(base_path):
-        return base_path
-    
-    # Find next available version number
-    version = 2
-    while True:
-        versioned_path = os.path.join(output_folder, f"{base_filename} v{version}.pdf")
-        if not os.path.exists(versioned_path):
-            return versioned_path
-        version += 1
-
-
 class ProcessingResult:
     """Container for processing results"""
     def __init__(self):
@@ -240,6 +93,8 @@ class ProcessingResult:
         self.import_file_path = None
         self.assignment_name = None
         self.total_students = 0
+        self.processing_folder = None  # For split PDF rezip
+        self.unzipped_folder = None  # For split PDF rezip
 
 
 def find_latest_zip(download_folder: str) -> Tuple[Optional[str], Optional[str]]:
@@ -408,12 +263,8 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path):
         
         # Store results (but don't update grades)
         result.submitted = [name_map[pdf] for pdf in pdf_paths]
-        result.unreadable = [import_df[import_df["Username"] == u]["First Name"].iloc[0].title() + " " + 
-                            import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
-                            for u in unreadable]
-        result.no_submission = [import_df[import_df["Username"] == u]["First Name"].iloc[0].title() + " " + 
-                               import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
-                               for u in no_submission]
+        result.unreadable = [get_student_display_name(import_df, u) for u in unreadable]
+        result.no_submission = [get_student_display_name(import_df, u) for u in no_submission]
         
         return result
     
@@ -455,7 +306,7 @@ def _setup_processing_environment(
     unreadable_folder = os.path.join(processing_folder, "unreadable")
     
     # Backup existing processing folder if it exists
-    backup_existing_folder(processing_folder, overwrite=overwrite)
+    backup_existing_folder(processing_folder, overwrite=overwrite, suppress_logs=True)
     
     return class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder
 
@@ -669,6 +520,8 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
         result.import_file_path = import_file_path
         result.total_students = len(import_df)
         result.assignment_name = assignment_name  # Store for use in split_pdf_cli.py
+        result.processing_folder = processing_folder  # Store for ZIP creation
+        result.unzipped_folder = unzipped_folder  # Store for ZIP creation
         
         # Split the combined PDF back into individual PDFs
         # The split_combined_pdf should place files in unzipped_folder (student folders)
@@ -756,12 +609,8 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
         
         # Store results
         result.submitted = [name_map[pdf] for pdf in pdf_paths]
-        result.unreadable = [import_df[import_df["Username"] == u]["First Name"].iloc[0].title() + " " + 
-                            import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
-                            for u in unreadable]
-        result.no_submission = [import_df[import_df["Username"] == u]["First Name"].iloc[0].title() + " " + 
-                               import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
-                               for u in no_submission]
+        result.unreadable = [get_student_display_name(import_df, u) for u in unreadable]
+        result.no_submission = [get_student_display_name(import_df, u) for u in no_submission]
         
         return result
     
@@ -806,7 +655,7 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         from zip_validator import validate_zip_structure
         is_valid_zip, zip_error = validate_zip_structure(zip_path)
         if not is_valid_zip:
-            raise Exception(f"❌ ZIP validation failed: {zip_error}")
+            raise Exception(f"ZIP validation failed: {zip_error}")
         
         # Get class folder path early for validation
         rosters_path = get_rosters_path()
@@ -816,7 +665,7 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         from import_file_handler import validate_import_file_early
         is_valid, error_msg = validate_import_file_early(class_folder_path)
         if not is_valid:
-            raise Exception(f"❌ Import File validation failed: {error_msg}")
+            raise Exception(f"Import File validation failed: {error_msg}")
         
         # Load Import File for name validation
         import_df, import_file_path = load_import_file(class_folder_path)
@@ -828,7 +677,7 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         names_match, name_error, mismatches = validate_student_names_match(zip_path, import_df)
         if not names_match:
             # Build detailed error message
-            error_parts = [f"❌ Name validation failed: {name_error}"]
+            error_parts = [f"Name validation failed: {name_error}"]
             if mismatches:
                 error_parts.append("")
                 error_parts.append("Folders in ZIP that don't match Import File:")
@@ -876,12 +725,8 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         
         # Store results
         result.submitted = [name_map[pdf] for pdf in pdf_paths]
-        result.unreadable = [import_df[import_df["Username"] == u]["First Name"].iloc[0].title() + " " + 
-                            import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
-                            for u in unreadable]
-        result.no_submission = [import_df[import_df["Username"] == u]["First Name"].iloc[0].title() + " " + 
-                               import_df[import_df["Username"] == u]["Last Name"].iloc[0].title() 
-                               for u in no_submission]
+        result.unreadable = [get_student_display_name(import_df, u) for u in unreadable]
+        result.no_submission = [get_student_display_name(import_df, u) for u in no_submission]
         
         return result
     

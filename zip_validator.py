@@ -70,7 +70,10 @@ def validate_zip_structure(zip_path: str) -> Tuple[bool, str]:
 
 def validate_student_names_match(zip_path: str, import_df: pd.DataFrame) -> Tuple[bool, str, List[str]]:
     """
-    Validate that student names in ZIP match names in Import File.
+    Validate that student names in ZIP match names in Import File using fuzzy matching.
+    
+    Uses the same fuzzy matching logic as quiz processing to handle name variations.
+    Only fails if 3+ students can't be matched (to account for typos or missing students).
     
     Args:
         zip_path: Path to ZIP file
@@ -80,6 +83,9 @@ def validate_student_names_match(zip_path: str, import_df: pd.DataFrame) -> Tupl
         Tuple of (names_match, error_message, list_of_mismatches)
     """
     try:
+        # Import the matching function from submission_processor
+        from submission_processor import _match_student_to_roster
+        
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             all_files = zip_ref.namelist()
             
@@ -95,32 +101,27 @@ def validate_student_names_match(zip_path: str, import_df: pd.DataFrame) -> Tupl
             
             # Extract student names from folder names
             # Pattern: "ID-ID - First Last - Date"
-            zip_names = set()
+            zip_names = []
             name_pattern = re.compile(r'^\d+-\d+\s+-\s+([\w\s]+)\s+-\s+\w+\s+\d+')
             
             for folder in student_folders:
                 match = name_pattern.match(folder)
                 if match:
                     full_name = match.group(1).strip()
-                    # Normalize: convert to "First Last" format
-                    zip_names.add(full_name.lower())
+                    zip_names.append(full_name)  # Keep original case for matching
             
-            # Get names from Import File
-            import_names = set()
-            for _, row in import_df.iterrows():
-                first = str(row.get('First Name', '')).strip()
-                last = str(row.get('Last Name', '')).strip()
-                if first and last:
-                    full_name = f"{first} {last}".lower()
-                    import_names.add(full_name)
-            
-            # Find names in ZIP but not in Import File
+            # Try to match each ZIP name to Import File using fuzzy matching
             mismatches = []
             for zip_name in zip_names:
-                if zip_name not in import_names:
+                # Use the same matching logic as quiz processing
+                user, hit = _match_student_to_roster(zip_name, import_df)
+                if not user:
+                    # Couldn't match even with fuzzy matching
                     mismatches.append(zip_name)
             
-            if mismatches:
+            # Only fail if 3+ students can't be matched
+            # This accounts for typos, missing students, or minor name variations
+            if len(mismatches) >= 3:
                 return False, (
                     f"Found {len(mismatches)} student(s) in ZIP that don't match Import File. "
                     "This might mean you selected the wrong class or wrong Import File."

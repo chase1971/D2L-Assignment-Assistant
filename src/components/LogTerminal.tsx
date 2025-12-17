@@ -1,14 +1,20 @@
-import React, { useRef, useEffect } from 'react';
-import { killProcesses, openStudentPdf, openCombinedPdf, openImportFile } from '../services/quizGraderService';
+import React, { useRef, useEffect, useState } from 'react';
+import { X } from 'lucide-react';
+import { openStudentPdf, openCombinedPdf, openImportFile } from '../services/quizGraderService';
+
+interface ConfidenceScore {
+  name: string;
+  grade: string;
+  confidence: number;
+}
 
 interface LogTerminalProps {
   logs: string[];
   isDark: boolean;
-  expandedLogging: boolean;
-  setExpandedLogging: (value: boolean) => void;
   addLog: (message: string) => void;
   drive: string;
   selectedClass: string;
+  confidenceScores?: ConfidenceScore[] | null;
 }
 
 /**
@@ -18,12 +24,12 @@ interface LogTerminalProps {
 export default function LogTerminal({
   logs,
   isDark,
-  expandedLogging,
-  setExpandedLogging,
   addLog,
   drive,
   selectedClass,
+  confidenceScores,
 }: LogTerminalProps) {
+  const [showConfidenceModal, setShowConfidenceModal] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll logs to bottom
@@ -31,14 +37,12 @@ export default function LogTerminal({
     if (logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
-  }, [logs, expandedLogging]);
+  }, [logs]);
 
-  // Filter logs for regular logging mode
+  // Filter logs for display
   // Since server.js now separates [USER] and [DEV] logs, we only receive user logs
   // So we just need minimal filtering for edge cases
-  const shouldShowLog = (log: string, index: number, allLogs: string[]): boolean => {
-    if (expandedLogging) return true;
-    
+  const shouldShowLog = (log: string): boolean => {
     const logTrimmed = log.trim();
     
     // Hide empty lines
@@ -54,22 +58,15 @@ export default function LogTerminal({
       return false;
     }
     
-    // Hide separator lines
-    if (/^[-=]{10,}$/.test(logTrimmed)) {
-      return false;
-    }
-    
-    // Show everything else (server already filtered out [DEV] logs)
+    // Show everything else (including separator lines, server already filtered out [DEV] logs)
     return true;
   };
 
   // Filter and deduplicate logs
   const getFilteredLogs = () => {
-    if (expandedLogging) return logs;
-    
     const seen = new Set<string>();
-    return logs.filter((log, index, arr) => {
-      if (!shouldShowLog(log, index, arr)) return false;
+    return logs.filter((log) => {
+      if (!shouldShowLog(log)) return false;
       
       // Deduplicate error messages (same content shouldn't appear twice)
       const normalizedLog = log.trim().toLowerCase();
@@ -83,15 +80,6 @@ export default function LogTerminal({
   };
   
   const filteredLogs = getFilteredLogs();
-
-  const handleKillProcesses = async () => {
-    const result = await killProcesses(addLog);
-    if (result.success) {
-      addLog(`✅ Killed ${result.killed || 0} processes`);
-    } else {
-      addLog(`❌ ${result.error}`);
-    }
-  };
 
   const handleOpenStudentPdf = async (studentName: string) => {
     const result = await openStudentPdf(drive, selectedClass, studentName, addLog);
@@ -131,33 +119,7 @@ export default function LogTerminal({
           ? 'border-[#1a2942]' 
           : 'border-gray-400'
       }`}>
-        <div className="flex items-center justify-between">
-          <span className={`font-bold ${isDark ? 'text-gray-400' : 'text-[#1a2942]'}`}>LOG TERMINAL</span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleKillProcesses}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                isDark 
-                  ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/50' 
-                  : 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300'
-              }`}
-              title="Kill all Node processes"
-            >
-              🔄 Kill Processes
-            </button>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={expandedLogging}
-                onChange={(e) => setExpandedLogging(e.target.checked)}
-                className="rounded"
-              />
-              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
-                Expanded Logging
-              </span>
-            </label>
-          </div>
-        </div>
+        <span className={`font-bold ${isDark ? 'text-gray-400' : 'text-[#1a2942]'}`}>LOG TERMINAL</span>
       </div>
       <div 
         ref={logContainerRef}
@@ -171,9 +133,15 @@ export default function LogTerminal({
           filteredLogs.map((log, index) => {
             // Strip [LOG:LEVEL] prefix if it somehow made it through
             let cleanLog = log;
+            // Handle format: [LOG:LEVEL] message
             const logMatch = log.match(/^\[LOG:(SUCCESS|ERROR|WARNING|INFO)\] (.+)$/);
             if (logMatch) {
               cleanLog = logMatch[2];  // Just the message without prefix
+            }
+            // Handle format where [LOG:LEVEL] is on its own line - skip it
+            if (log.trim() === '[LOG:INFO]' || log.trim() === '[LOG:WARNING]' || 
+                log.trim() === '[LOG:ERROR]' || log.trim() === '[LOG:SUCCESS]') {
+              return null;  // Don't render these lines
             }
             
             const isError = cleanLog.includes('❌') || cleanLog.toLowerCase().includes('error');
@@ -243,14 +211,14 @@ export default function LogTerminal({
               );
             }
             
-            // Check for completion messages - show import file link
+            // Check for completion messages - show import file link and confidence scores link
             if (cleanLog.includes('Completion processing completed!') || 
                 cleanLog.includes('Grade extraction complete!') ||
                 cleanLog.includes('Grade extraction completed successfully!')) {
               return (
                 <div key={index} className={isError ? 'text-red-500' : ''}>
                   <div>{cleanLog}</div>
-                  <div className="mt-1">
+                  <div className="mt-1 flex gap-4">
                     <button
                       onClick={handleOpenImportFile}
                       className={`underline cursor-pointer hover:opacity-70 font-bold ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-500'}`}
@@ -258,6 +226,15 @@ export default function LogTerminal({
                     >
                       📋 Open Import File
                     </button>
+                    {confidenceScores && confidenceScores.length > 0 && (
+                      <button
+                        onClick={() => setShowConfidenceModal(true)}
+                        className={`underline cursor-pointer hover:opacity-70 font-bold ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-500'}`}
+                        style={{ textDecoration: 'underline', textUnderlineOffset: '3px' }}
+                      >
+                        📊 View Confidence Scores
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -277,6 +254,148 @@ export default function LogTerminal({
           })
         )}
       </div>
+      
+      {/* Confidence Scores Modal */}
+      {showConfidenceModal && confidenceScores && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 999999,
+          }}
+          onClick={() => setShowConfidenceModal(false)}
+        >
+          <div 
+            style={{
+              width: '400px',
+              maxWidth: '90vw',
+              maxHeight: '70vh',
+              backgroundColor: isDark ? '#1a2942' : '#d0d0d4',
+              borderRadius: '12px',
+              border: isDark ? '2px solid #3a4962' : '2px solid #888',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div 
+              style={{
+                padding: '12px 16px',
+                backgroundColor: isDark ? '#0f1729' : '#c0c0c4',
+                borderBottom: isDark ? '2px solid #3a4962' : '2px solid #999',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ 
+                fontWeight: 'bold', 
+                fontSize: '14px',
+                color: isDark ? '#fff' : '#1a2942'
+              }}>
+                Confidence Scores
+              </span>
+              <button
+                onClick={() => setShowConfidenceModal(false)}
+                style={{
+                  padding: '4px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  cursor: 'pointer',
+                  color: isDark ? '#888' : '#666',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#ff4444'}
+                onMouseLeave={(e) => e.currentTarget.style.color = isDark ? '#888' : '#666'}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            {/* Scrollable Content */}
+            <div 
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '12px',
+                backgroundColor: isDark ? '#0f1729' : '#b8b8bc',
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {confidenceScores
+                  .sort((a, b) => b.confidence - a.confidence)
+                  .map((score, idx) => {
+                    const confidenceColor = score.confidence >= 0.7 
+                      ? (isDark ? '#4ade80' : '#16a34a')
+                      : score.confidence >= 0.4
+                      ? (isDark ? '#fbbf24' : '#ca8a04')
+                      : (isDark ? '#f87171' : '#dc2626');
+                    
+                    return (
+                      <div 
+                        key={idx}
+                        style={{
+                          backgroundColor: isDark ? '#1a2942' : '#d0d0d4',
+                          border: isDark ? '1px solid #3a4962' : '1px solid #999',
+                          borderRadius: '6px',
+                          padding: '10px 12px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ 
+                            fontWeight: '500',
+                            fontSize: '13px',
+                            color: isDark ? '#e0e0e0' : '#1a2942',
+                            marginBottom: '4px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {score.name}
+                          </div>
+                          <div style={{ 
+                            fontSize: '11px',
+                            color: isDark ? '#888' : '#666',
+                          }}>
+                            Grade: {score.grade}
+                          </div>
+                        </div>
+                        <div style={{ 
+                          color: confidenceColor,
+                          fontWeight: '600',
+                          fontSize: '13px',
+                          marginLeft: '12px',
+                          flexShrink: 0,
+                        }}>
+                          {(score.confidence * 100).toFixed(1)}%
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

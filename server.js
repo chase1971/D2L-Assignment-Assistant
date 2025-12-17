@@ -399,8 +399,15 @@ async function runPythonScript(scriptName, args = []) {
           return;
         }
         
-        // Skip [DEV] messages and other internal output
-        if (trimmed.startsWith('[DEV]') || trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        // Skip [DEV] messages and JSON responses
+        // JSON responses start with { and contain "confidenceScores" or "success"
+        if (trimmed.startsWith('[DEV]') || 
+            (trimmed.startsWith('{') && (trimmed.includes('"confidenceScores"') || trimmed.includes('"success"')))) {
+          return;
+        }
+        
+        // Skip other lines starting with [ that aren't [LOG:LEVEL] or [USER]
+        if (trimmed.startsWith('[') && !trimmed.match(/^\[LOG:/) && !trimmed.startsWith('[USER]')) {
           return;
         }
         
@@ -596,59 +603,73 @@ app.post('/api/quiz/extract-grades', async (req, res) => {
     
     const result = await runPythonScript('extract_grades_cli.py', [drive || 'C', className]);
     
-    // Check if output is JSON (Python script returned structured response)
+    // Always use userLogs if available (they're already parsed from [LOG:LEVEL] format)
     let logs = [];
     let error = null;
     let success = result.success;
     
+    if (result.userLogs && result.userLogs.length > 0) {
+      // Convert userLogs array of {level, message} objects to strings for frontend
+      logs = result.userLogs.map(log => log.message || log);
+    } else {
+      // Fallback: parse output manually
+      logs = result.output.split('\n')
+        .filter(l => {
+          const trimmed = l.trim();
+          return trimmed && 
+                 !trimmed.startsWith('[DEV]') && 
+                 !trimmed.startsWith('{') &&
+                 !trimmed.match(/^\[LOG:/); // Skip raw [LOG:LEVEL] lines (already parsed)
+        })
+        .map(l => {
+          const trimmed = l.trim();
+          // Extract message from [LOG:LEVEL] format if needed
+          const logMatch = trimmed.match(/^\[LOG:(SUCCESS|ERROR|WARNING|INFO)\] (.+)$/);
+          if (logMatch) {
+            return logMatch[2];
+          }
+          if (trimmed.startsWith('[USER]')) {
+            return trimmed.substring(7);
+          }
+          return trimmed;
+        });
+    }
+    
+    if (!result.success) {
+      error = result.error || 'Extraction failed';
+    }
+    
+    // Extract confidence scores from JSON response if available
+    let confidenceScores = null;
     try {
-      // Try to parse the entire output as JSON first (Python script may output pure JSON)
       const trimmedOutput = result.output.trim();
-      if (trimmedOutput.startsWith('{')) {
-        const jsonData = JSON.parse(trimmedOutput);
-        success = jsonData.success !== false; // Explicitly check for false
-        logs = jsonData.logs || [];
-        error = jsonData.error || null;
-      } else {
-        // Try to find JSON in the output (might be mixed with other text)
-        const jsonMatch = trimmedOutput.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const jsonData = JSON.parse(jsonMatch[0]);
+      // Look for JSON at the end of output (after all logs)
+      const jsonMatch = trimmedOutput.match(/\{[\s\S]*"confidenceScores"[\s\S]*\}/);
+      if (jsonMatch) {
+        const jsonData = JSON.parse(jsonMatch[0]);
+        if (jsonData.confidenceScores) {
+          confidenceScores = jsonData.confidenceScores;
+        }
+        // Also update success from JSON if available
+        if (jsonData.success !== undefined) {
           success = jsonData.success !== false;
-          logs = jsonData.logs || [];
-          error = jsonData.error || null;
-        } else {
-          // Use separated user logs if available, otherwise fall back to parsing output
-          if (result.userLogs && result.userLogs.length > 0) {
-            logs = result.userLogs;
-          } else {
-            // Legacy: parse output and filter out [DEV] lines
-            logs = result.output.split('\n')
-              .filter(l => l.trim() && !l.trim().startsWith('[DEV]'))
-              .map(l => l.trim().startsWith('[USER]') ? l.trim().substring(7) : l.trim());
-          }
-          if (!result.success) {
-            error = result.error || 'Extraction failed';
-          }
         }
       }
     } catch (parseError) {
-      // If JSON parsing fails, use separated user logs or fall back to plain text
-      if (result.userLogs && result.userLogs.length > 0) {
-        logs = result.userLogs;
-      } else {
-        logs = result.output.split('\n')
-          .filter(l => l.trim() && !l.trim().startsWith('[DEV]'))
-          .map(l => l.trim().startsWith('[USER]') ? l.trim().substring(7) : l.trim());
-      }
-      if (!result.success) {
-        error = result.error || 'Extraction failed';
-      }
+      // Ignore parse errors for confidence scores
     }
+    
+    // Send both logs (for compatibility) and userLogs (for new format)
+    // Convert logs array to userLogs format if needed
+    const userLogs = result.userLogs && result.userLogs.length > 0 
+      ? result.userLogs.map(log => typeof log === 'string' ? { level: 'INFO', message: log } : log)
+      : logs.map(log => typeof log === 'string' ? { level: 'INFO', message: log } : log);
     
     apiResponse(res, {
       success,
-      logs,
+      logs,  // Keep for backward compatibility
+      userLogs,  // New format with level info
+      ...(confidenceScores ? { confidenceScores } : {}),
       ...(success ? {} : { error: error || 'Extraction failed' })
     });
   } catch (error) {
@@ -935,7 +956,7 @@ app.post('/api/quiz/open-folder', async (req, res) => {
 
 app.post('/api/quiz/clear-data', async (req, res) => {
   try {
-    const { drive, className, assignmentName, saveFoldersAndPdf } = req.body;
+    const { drive, className, assignmentName, saveFoldersAndPdf, saveCombinedPdf } = req.body;
     
     if (!validateClassName(className)) {
       return apiResponse(res, { success: false, error: 'Invalid class name' });
@@ -948,6 +969,8 @@ app.post('/api/quiz/clear-data', async (req, res) => {
     const args = [drive || 'C', className, assignmentName];
     if (saveFoldersAndPdf) {
       args.push('--save-folders-and-pdf');
+    } else if (saveCombinedPdf) {
+      args.push('--save-combined-pdf');
     }
     
     const result = await runPythonScript('clear_data_cli.py', args);

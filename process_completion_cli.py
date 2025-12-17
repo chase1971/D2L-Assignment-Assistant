@@ -70,20 +70,17 @@ def main():
         log("SEPARATOR_LINE")
         log("COMPLETION_PROCESSING_HEADER")
         log("COMPLETION_AUTO_ASSIGN")
-        if dont_override:
-            log("COMPLETION_MODE_DONT_OVERRIDE")
-        else:
-            log("COMPLETION_MODE_OVERRIDE")
+        # Removed verbose logging: mode messages
         log("SEPARATOR_LINE")
         
         result = None
         try:
             result = run_completion_process(drive, class_name, selected_zip, dont_override=dont_override)
-            log("EMPTY_LINE")
-            log("COMPLETION_SUCCESS")
+            # Removed verbose logging: "Completion processing completed successfully!"
         except Exception as e:
             log("EMPTY_LINE")
             log("ERR_UNEXPECTED", error=format_error_message(e))
+            log("EMPTY_LINE")
             raise
         
         # Open the processed PDF and Import File automatically (only if processing was successful)
@@ -91,11 +88,10 @@ def main():
             if os.path.exists(result.combined_pdf_path):
                 try:
                     open_file_with_default_app(result.combined_pdf_path)
-                    log("EMPTY_LINE")
-                    log("COMPLETION_OPENED_PDF", filename=os.path.basename(result.combined_pdf_path))
+                    # Removed verbose logging: "Opened PDF file: ..."
                 except Exception as e:
-                    log("EMPTY_LINE")
-                    log("COMPLETION_COULD_NOT_OPEN_PDF", error=str(e))
+                    # Silently fail - not critical
+                    pass
         
         # Open the Import File automatically (only if processing was successful)
         if result and hasattr(result, 'import_file_path') and result.import_file_path:
@@ -106,10 +102,7 @@ def main():
                     # Silently fail - not critical
                     pass
         
-        log("EMPTY_LINE")
-        log("DOUBLE_SEPARATOR_LINE")
-        log("COMPLETION_HEADER_COMPLETE")
-        log("DOUBLE_SEPARATOR_LINE")
+        # Removed verbose logging: completion header and separators
         
         # Return JSON for the backend
         response = {
