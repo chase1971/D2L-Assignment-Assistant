@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 
-title Quiz Grader - Build and Install
+title D2L Assignment Assistant - Build and Install
 
 echo ========================================
-echo Quiz Grader - Build and Install
+echo D2L Assignment Assistant - Build and Install
 echo ========================================
 echo.
 
@@ -26,7 +26,28 @@ if exist "%PROJECT_DIR%dist-frontend" (
 echo [OK] Clean complete
 echo.
 
-echo Step 2: Building Frontend (Vite)...
+echo Step 2: Checking for bundled Python...
+echo ----------------------------------------
+if exist "%PROJECT_DIR%python\python.exe" (
+    echo [OK] Found bundled Python
+) else (
+    echo [WARNING] Bundled Python not found!
+    echo.
+    echo For a standalone installer, you should bundle Python.
+    echo Run prepare-python.bat first, or the installer will require
+    echo Python to be installed on the target computer.
+    echo.
+    echo Continue anyway? (Y/N)
+    set /p CONTINUE=
+    if /i not "!CONTINUE!"=="Y" (
+        echo Build cancelled.
+        pause
+        exit /b 1
+    )
+)
+echo.
+
+echo Step 3: Building Frontend (Vite)...
 echo ----------------------------------------
 call npm run build
 if errorlevel 1 (
@@ -38,7 +59,7 @@ if errorlevel 1 (
 echo [OK] Frontend built successfully
 echo.
 
-echo Step 3: Building Electron Installer...
+echo Step 4: Building Electron Installer...
 echo ----------------------------------------
 REM Skip code signing
 set CSC_IDENTITY_AUTO_DISCOVERY=false
@@ -53,10 +74,10 @@ if errorlevel 1 (
 echo [OK] Installer built successfully
 echo.
 
-echo Step 4: Finding and launching installer...
+echo Step 5: Finding and launching installer...
 echo ----------------------------------------
 set "INSTALLER_PATH="
-for %%F in ("%DIST_DIR%\Quiz Grader Setup*.exe") do (
+for %%F in ("%DIST_DIR%\D2L Assignment Assistant Setup*.exe") do (
     set "INSTALLER_PATH=%%F"
     goto :found
 )

@@ -1,5 +1,5 @@
 /**
- * Quiz Grader - Electron Main Process
+ * D2L Assignment Assistant - Electron Main Process
  * 
  * This file handles the Electron window and starts the backend server.
  */
@@ -14,9 +14,34 @@ let serverProcess = null;
 // Determine if we're in development or production
 const isDev = !app.isPackaged;
 
-// Kill any process using port 5000 before starting
-function killPort5000() {
+// Check if server is already running (for dev mode with concurrently)
+function isServerRunning() {
   return new Promise((resolve) => {
+    const http = require('http');
+    const req = http.get('http://localhost:5000/api/test', (res) => {
+      resolve(true);
+    });
+    req.on('error', () => {
+      resolve(false);
+    });
+    req.setTimeout(1000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+// Kill any process using port 5000 before starting (only if server is NOT already running)
+function killPort5000() {
+  return new Promise(async (resolve) => {
+    // In dev mode, if server is already running (started by concurrently), don't kill it
+    const serverAlreadyRunning = await isServerRunning();
+    if (serverAlreadyRunning) {
+      console.log('Server already running on port 5000, skipping port cleanup');
+      resolve();
+      return;
+    }
+    
     console.log('Checking for processes on port 5000...');
     
     // Windows command to find and kill process on port 5000
@@ -117,6 +142,7 @@ function createWindow() {
     minHeight: 600,
     frame: false,           // Frameless/borderless window
     autoHideMenuBar: true,  // Hide the menu bar
+    title: 'D2L Assignment Assistant',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -158,7 +184,8 @@ function createWindow() {
       console.error('❌ Failed to load:', errorCode, errorDescription);
     });
     
-    mainWindow.webContents.openDevTools();
+    // DevTools can be opened manually with Ctrl+Shift+I or F12
+    // mainWindow.webContents.openDevTools();
   } else {
     // In production, load from built files in app.asar
     const distPath = path.join(app.getAppPath(), 'dist-frontend', 'index.html');

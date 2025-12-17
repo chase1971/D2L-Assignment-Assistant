@@ -156,6 +156,12 @@ def split_combined_pdf(
         # Extract names from pages
         extracted_names = _extract_names_from_pages(reader, total_pages)
         
+        # Validate that we found actual student names (not all "Unknown" or "No text")
+        valid_names = [name for name in extracted_names if not name.startswith("Unknown") and not name.startswith("No text") and not name.startswith("Error")]
+        if len(valid_names) == 0:
+            log("SPLIT_WRONG_PDF")
+            raise Exception("Wrong combined PDF uploaded. Try again.")
+        
         # Build name map from import file
         import_name_map = _build_import_name_map(import_df)
         

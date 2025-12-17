@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
-export type ClearOption = 'saveFoldersAndPdf' | 'saveCombinedPdf' | 'deleteAll';
+export type ClearOption = 'saveFoldersAndPdf' | 'saveCombinedPdf' | 'deleteAll' | 'deleteEverything';
 
 interface ClearOptionsModalProps {
   isOpen: boolean;
@@ -12,6 +12,8 @@ interface ClearOptionsModalProps {
   isDark: boolean;
   metalButtonClass: (isDark: boolean) => string;
   metalButtonStyle: (isDark: boolean) => React.CSSProperties | undefined;
+  hasCurrentAssignment?: boolean; // Whether a current assignment is selected
+  onBack?: () => void; // Optional back button handler
 }
 
 export default function ClearOptionsModal({
@@ -23,8 +25,11 @@ export default function ClearOptionsModal({
   isDark,
   metalButtonClass,
   metalButtonStyle,
+  hasCurrentAssignment = false,
+  onBack,
 }: ClearOptionsModalProps) {
   const [selectedOption, setSelectedOption] = useState<ClearOption | null>(null);
+  const [pressedOption, setPressedOption] = useState<ClearOption | null>(null);
 
   if (!isOpen) return null;
 
@@ -40,10 +45,23 @@ export default function ClearOptionsModal({
     onClose();
   };
 
+  // Always show 3 options (same for both with and without current assignment)
   const options = [
-    { value: 'saveFoldersAndPdf' as ClearOption, label: 'Save folders and single PDF' },
-    { value: 'saveCombinedPdf' as ClearOption, label: 'Save combined PDF' },
-    { value: 'deleteAll' as ClearOption, label: 'Delete all data' },
+    { 
+      value: 'saveFoldersAndPdf' as ClearOption, 
+      label: 'Save folders and single PDF',
+      description: '(Creates archived folder)'
+    },
+    { 
+      value: 'saveCombinedPdf' as ClearOption, 
+      label: 'Save combined PDF',
+      description: '(Creates archived folder)'
+    },
+    { 
+      value: 'deleteEverything' as ClearOption, 
+      label: 'Delete everything',
+      description: ''
+    },
   ];
 
   return (
@@ -143,10 +161,14 @@ export default function ClearOptionsModal({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {options.map((option) => {
               const isSelected = selectedOption === option.value;
+              const isPressed = pressedOption === option.value;
               return (
                 <button
                   key={option.value}
                   onClick={() => setSelectedOption(option.value)}
+                  onMouseDown={() => setPressedOption(option.value)}
+                  onMouseUp={() => setPressedOption(null)}
+                  onMouseLeave={() => setPressedOption(null)}
                   style={{
                     width: '100%',
                     padding: '12px 16px',
@@ -159,25 +181,46 @@ export default function ClearOptionsModal({
                       : (isDark ? '2px solid #3a4962' : '2px solid #999'),
                     borderRadius: '8px',
                     cursor: 'pointer',
-                    transition: 'all 0.15s',
+                    transition: 'all 0.15s ease',
+                    transform: isPressed ? 'translateY(2px) scale(0.98)' : 'translateY(0) scale(1)',
+                    boxShadow: isPressed 
+                      ? (isDark ? 'inset 0 2px 4px rgba(0,0,0,0.6)' : 'inset 0 2px 4px rgba(0,0,0,0.4)')
+                      : isSelected
+                        ? (isDark ? '0 2px 4px rgba(0, 200, 255, 0.3)' : '0 2px 4px rgba(100, 150, 255, 0.3)')
+                        : 'none',
                     color: isDark ? '#e0e0e0' : '#333',
                     fontSize: '14px',
                     fontWeight: isSelected ? '600' : '400',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: '4px',
                   }}
                   onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = isDark ? 'rgba(0, 200, 255, 0.1)' : 'rgba(100, 150, 255, 0.1)';
+                    if (!isSelected && !isPressed) {
+                      e.currentTarget.style.backgroundColor = isDark ? 'rgba(0, 200, 255, 0.15)' : 'rgba(100, 150, 255, 0.15)';
                       e.currentTarget.style.borderColor = isDark ? '#00c8ff' : '#1a2942';
+                      e.currentTarget.style.transform = 'scale(1.01)';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!isSelected) {
+                    if (!isSelected && !isPressed) {
                       e.currentTarget.style.backgroundColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
                       e.currentTarget.style.borderColor = isDark ? '#3a4962' : '#999';
+                      e.currentTarget.style.transform = 'scale(1)';
                     }
                   }}
                 >
-                  {option.label}
+                  <span>{option.label}</span>
+                  {option.description && (
+                    <span style={{
+                      fontSize: '12px',
+                      color: isDark ? '#888' : '#666',
+                      fontStyle: 'italic',
+                    }}>
+                      {option.description}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -195,33 +238,125 @@ export default function ClearOptionsModal({
             gap: '10px',
           }}
         >
-          <button
-            onClick={handleClose}
-            className={`flex-1 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-lg ${metalButtonClass(isDark)}`}
-            style={metalButtonStyle(isDark)}
-          >
-            CANCEL
-          </button>
+          {onBack ? (
+            <>
+              <button
+                onClick={onBack}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border shadow-lg ${metalButtonClass(isDark)}`}
+                style={{ ...metalButtonStyle(isDark), transition: 'all 0.15s ease' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                  e.currentTarget.style.filter = 'brightness(1.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.filter = 'brightness(1)';
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'translateY(2px) scale(0.98)';
+                  e.currentTarget.style.boxShadow = isDark 
+                    ? 'inset 0 2px 4px rgba(0,0,0,0.6)'
+                    : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                  e.currentTarget.style.boxShadow = '';
+                }}
+              >
+                BACK
+              </button>
+              <button
+                onClick={handleClose}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border shadow-lg ${metalButtonClass(isDark)}`}
+                style={{ ...metalButtonStyle(isDark), transition: 'all 0.15s ease' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                  e.currentTarget.style.filter = 'brightness(1.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.filter = 'brightness(1)';
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'translateY(2px) scale(0.98)';
+                  e.currentTarget.style.boxShadow = isDark 
+                    ? 'inset 0 2px 4px rgba(0,0,0,0.6)'
+                    : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                  e.currentTarget.style.boxShadow = '';
+                }}
+              >
+                CANCEL
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleClose}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border shadow-lg ${metalButtonClass(isDark)}`}
+              style={{ ...metalButtonStyle(isDark), transition: 'all 0.15s ease' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.02)';
+                e.currentTarget.style.filter = 'brightness(1.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.filter = 'brightness(1)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'translateY(2px) scale(0.98)';
+                e.currentTarget.style.boxShadow = isDark 
+                  ? 'inset 0 2px 4px rgba(0,0,0,0.6)'
+                  : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1.02)';
+                e.currentTarget.style.boxShadow = '';
+              }}
+            >
+              CANCEL
+            </button>
+          )}
           <button
             onClick={handleConfirm}
             disabled={!selectedOption}
-            className="flex-1 px-4 py-2 rounded-lg transition-all text-sm font-medium border-2 shadow-lg font-bold"
-            style={{
-              backgroundColor: selectedOption ? (isDark ? '#dc2626' : '#ef4444') : (isDark ? '#666' : '#999'),
-              borderColor: selectedOption ? (isDark ? '#b91c1c' : '#dc2626') : (isDark ? '#555' : '#777'),
-              color: '#fff',
-              backgroundImage: 'none',
-              cursor: selectedOption ? 'pointer' : 'not-allowed',
-              opacity: selectedOption ? 1 : 0.5,
-            }}
+            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border-2 shadow-lg font-bold ${
+              selectedOption 
+                ? `bg-gradient-to-b ${isDark ? 'from-[#dc2626] to-[#b91c1c]' : 'from-[#ef4444] to-[#dc2626]'} border-[#b91c1c] text-white`
+                : 'bg-gray-500 border-gray-600 text-gray-300 cursor-not-allowed opacity-30 grayscale brightness-75'
+            }`}
+            style={selectedOption ? {
+              ...(isDark ? undefined : {
+                backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 25%, transparent 50%, rgba(0,0,0,0.1) 75%, rgba(0,0,0,0.2) 100%), linear-gradient(180deg, #f87171 0%, #ef4444 20%, #dc2626 50%, #b91c1c 80%, #991b1b 100%)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.3)'
+              }),
+              transition: 'all 0.15s ease'
+            } : undefined}
             onMouseEnter={(e) => {
               if (selectedOption) {
-                e.currentTarget.style.backgroundColor = isDark ? '#b91c1c' : '#dc2626';
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.filter = 'brightness(1.15)';
               }
             }}
             onMouseLeave={(e) => {
               if (selectedOption) {
-                e.currentTarget.style.backgroundColor = isDark ? '#dc2626' : '#ef4444';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.filter = 'brightness(1)';
+              }
+            }}
+            onMouseDown={(e) => {
+              if (selectedOption) {
+                e.currentTarget.style.transform = 'translateY(2px) scale(0.98)';
+                e.currentTarget.style.boxShadow = isDark 
+                  ? 'inset 0 2px 4px rgba(0,0,0,0.6)'
+                  : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+              }
+            }}
+            onMouseUp={(e) => {
+              if (selectedOption) {
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '';
               }
             }}
           >

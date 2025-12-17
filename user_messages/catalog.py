@@ -26,6 +26,7 @@ MESSAGES = {
     "CLASS_LOADED": ("✅ Class loaded: {class_name}", "SUCCESS", "S1001"),
     "LOCATION": ("📂 Location: {path}", "INFO", "I1001"),
     "NO_CLASS": ("❌ Please select a class first", "ERROR", "E1001"),
+    "ERR_NO_IMPORT_FILE": ("❌ No import file found in this folder", "ERROR", "E1051"),
     
     # =========================================================================
     # LOADING CLASSES
@@ -97,6 +98,8 @@ MESSAGES = {
     "CLEAR_SUCCESS": ("✅ Cleanup completed!", "SUCCESS", "S1016"),
     "CLEAR_ARCHIVED": ("🗑️ Clearing all archived data for {class_name}", "INFO", "I1019"),
     "CLEAR_ARCHIVED_SUCCESS": ("✅ Cleared {count} archived folder(s)", "SUCCESS", "S1017"),
+    "CLEAR_MODE_EVERYTHING": ("🗑️ Deleting all folders (including archived)...", "INFO", "I1100"),
+    "CLEAR_NO_FOLDERS": ("ℹ️ No folders found to delete", "INFO", "I1101"),
     "CLEAR_NO_ARCHIVED": ("ℹ️ No archived folders found", "INFO", "I1020"),
     "CLEAR_TARGET_FOLDER": ("Target folder: {folder_name}", "INFO", "I1021"),
     "CLEAR_MODE_SELECTIVE": ("Mode: Selective (save folders and PDF)", "INFO", "I1022"),
@@ -270,6 +273,8 @@ MESSAGES = {
     "SPLIT_ERRORS_HEADER": ("❌ Errors:", "ERROR", "E1040"),
     "SPLIT_ERROR_ITEM": ("   {error}", "ERROR", "E1041"),
     "SPLIT_COMPLETED": ("✅ Split PDF and rezip completed!", "SUCCESS", "S1033"),
+    "SPLIT_WRONG_PDF": ("❌ Wrong combined PDF uploaded. Try again.", "ERROR", "E1052"),
+    "SPLIT_NO_UNZIPPED": ("❌ No unzipped folders found", "ERROR", "E1053"),
     
     # =========================================================================
     # PROCESS COMPLETION CLI SPECIFIC

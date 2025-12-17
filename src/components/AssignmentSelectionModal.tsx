@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Folder, X, Calendar, HardDrive, CheckSquare, Square } from 'lucide-react';
 
 interface ProcessingFolder {
@@ -14,7 +14,7 @@ interface AssignmentSelectionModalProps {
   folders: ProcessingFolder[];
   selectedAssignments: Set<string>;
   onToggleAssignment: (assignmentName: string) => void;
-  onSelectAll: () => void;
+  onSelectAll: (folderNames: string[]) => void;
   onDeselectAll: () => void;
   onConfirm: () => void;
   isDark: boolean;
@@ -35,9 +35,21 @@ export default function AssignmentSelectionModal({
   metalButtonClass,
   metalButtonStyle,
 }: AssignmentSelectionModalProps) {
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [pressedFolder, setPressedFolder] = useState<string | null>(null);
+
+  // Filter folders based on checkbox
+  const visibleFolders = useMemo(() => {
+    if (includeArchived) {
+      return folders; // Show all folders
+    }
+    // Only show unarchived (grade processing) folders
+    return folders.filter(folder => folder.name.toLowerCase().startsWith('grade processing '));
+  }, [folders, includeArchived]);
+
   if (!isOpen) return null;
 
-  const allSelected = folders.length > 0 && selectedAssignments.size === folders.length;
+  const allSelected = visibleFolders.length > 0 && visibleFolders.every(folder => selectedAssignments.has(folder.name));
 
   return (
     <div 
@@ -101,7 +113,7 @@ export default function AssignmentSelectionModal({
               fontSize: '12px',
               color: isDark ? '#888' : '#666'
             }}>
-              ({folders.length} found)
+              ({visibleFolders.length} {includeArchived ? 'total' : 'unarchived'} found)
             </span>
           </div>
           <button
@@ -121,7 +133,7 @@ export default function AssignmentSelectionModal({
           </button>
         </div>
 
-        {/* Select All / Deselect All Bar */}
+        {/* Include Archived Checkbox and Select All / Deselect All Bar */}
         <div
           style={{
             padding: '10px 20px',
@@ -131,32 +143,70 @@ export default function AssignmentSelectionModal({
             alignItems: 'center',
             justifyContent: 'space-between',
             flexShrink: 0,
+            gap: '12px',
           }}
         >
-          <span style={{
-            fontSize: '12px',
-            color: isDark ? '#888' : '#666'
-          }}>
-            {selectedAssignments.size} selected
-          </span>
-          <button
-            onClick={allSelected ? onDeselectAll : onSelectAll}
+          <label
             style={{
-              padding: '6px 12px',
-              fontSize: '12px',
-              fontWeight: '500',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: isDark ? '#3a4962' : '#999',
-              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
               cursor: 'pointer',
-              transition: 'background-color 0.15s',
+              fontSize: '12px',
+              color: isDark ? '#e0e0e0' : '#333',
+              userSelect: 'none',
             }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isDark ? '#4a5972' : '#aaa'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isDark ? '#3a4962' : '#999'}
           >
-            {allSelected ? 'Deselect All' : 'Select All'}
-          </button>
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => {
+                setIncludeArchived(e.target.checked);
+                // Deselect archived folders when unchecking
+                if (!e.target.checked) {
+                  folders
+                    .filter(f => f.name.toLowerCase().startsWith('archived '))
+                    .forEach(f => {
+                      if (selectedAssignments.has(f.name)) {
+                        onToggleAssignment(f.name);
+                      }
+                    });
+                }
+              }}
+              style={{
+                width: '16px',
+                height: '16px',
+                cursor: 'pointer',
+              }}
+            />
+            <span>Include archived folders</span>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{
+              fontSize: '12px',
+              color: isDark ? '#888' : '#666'
+            }}>
+              {selectedAssignments.size} selected
+            </span>
+            <button
+              onClick={() => {
+                if (allSelected) {
+                  onDeselectAll();
+                } else {
+                  // Select only visible folders
+                  onSelectAll(visibleFolders.map(f => f.name));
+                }
+              }}
+              className={`px-3 py-1.5 text-xs rounded border font-medium ${metalButtonClass(isDark)}`}
+              style={{
+                ...metalButtonStyle(isDark),
+                fontSize: '12px',
+                padding: '6px 12px',
+              }}
+            >
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Folder List */}
@@ -168,12 +218,17 @@ export default function AssignmentSelectionModal({
             maxHeight: 'calc(80vh - 220px)',
           }}
         >
-          {folders.map((folder, index) => {
+          {visibleFolders.map((folder, index) => {
+            const isArchived = folder.name.toLowerCase().startsWith('archived ');
             const isSelected = selectedAssignments.has(folder.name);
+            const isPressed = pressedFolder === folder.name;
             return (
               <button
                 key={index}
                 onClick={() => onToggleAssignment(folder.name)}
+                onMouseDown={() => setPressedFolder(folder.name)}
+                onMouseUp={() => setPressedFolder(null)}
+                onMouseLeave={() => setPressedFolder(null)}
                 style={{
                   width: '100%',
                   padding: '14px 20px',
@@ -187,16 +242,16 @@ export default function AssignmentSelectionModal({
                   border: 'none',
                   borderBottom: isDark ? '1px solid #2a3952' : '1px solid #999',
                   cursor: 'pointer',
-                  transition: 'background-color 0.15s',
+                  transition: 'all 0.15s ease',
+                  transform: isPressed ? 'translateY(2px) scale(0.98)' : 'translateY(0) scale(1)',
+                  boxShadow: isPressed 
+                    ? (isDark ? 'inset 0 2px 4px rgba(0,0,0,0.6)' : 'inset 0 2px 4px rgba(0,0,0,0.4)')
+                    : 'none',
                 }}
                 onMouseEnter={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = isDark ? 'rgba(0, 200, 255, 0.1)' : 'rgba(255, 255, 255, 0.5)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
+                  if (!isSelected && !isPressed) {
+                    e.currentTarget.style.backgroundColor = isDark ? 'rgba(0, 200, 255, 0.15)' : 'rgba(100, 150, 255, 0.1)';
+                    e.currentTarget.style.transform = 'scale(1.005)';
                   }
                 }}
               >
@@ -232,6 +287,16 @@ export default function AssignmentSelectionModal({
                       flex: 1,
                     }}>
                       {folder.name}
+                      {isArchived && (
+                        <span style={{
+                          marginLeft: '8px',
+                          fontSize: '11px',
+                          color: isDark ? '#888' : '#666',
+                          fontStyle: 'italic',
+                        }}>
+                          (archived)
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div style={{ 

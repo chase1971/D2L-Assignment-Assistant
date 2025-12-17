@@ -29,7 +29,7 @@ function waitForServer(url, timeout = 30000) {
 }
 
 async function start() {
-  console.log('🚀 Starting Quiz Grader (NewStyle)...\n');
+  console.log('🚀 Starting D2L Assignment Assistant...\n');
   
   // Start backend server
   console.log('📡 Starting backend server...');

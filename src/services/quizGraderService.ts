@@ -270,10 +270,10 @@ export const openDownloads = (addLog: LogCallback): Promise<ApiResult> =>
     addLog
   });
 
-export const clearAllData = (drive: string, selectedClass: string, assignmentName: string | null, saveFoldersAndPdf: boolean, saveCombinedPdf: boolean, addLog: LogCallback): Promise<ApiResult> =>
+export const clearAllData = (drive: string, selectedClass: string, assignmentName: string | null, saveFoldersAndPdf: boolean, saveCombinedPdf: boolean, deleteEverything: boolean, deleteArchivedToo: boolean, addLog: LogCallback): Promise<ApiResult> =>
   apiCall({
     endpoint: '/quiz/clear-data',
-    body: { drive, className: selectedClass, assignmentName, saveFoldersAndPdf, saveCombinedPdf },
+    body: { drive, className: selectedClass, assignmentName, saveFoldersAndPdf, saveCombinedPdf, deleteEverything, deleteArchivedToo },
     errorMessage: 'Failed to clear data',
     addLog
   });
@@ -389,6 +389,187 @@ export const saveConfig = async (config: Record<string, unknown>): Promise<ApiRe
     };
   }
 };
+
+// ============================================================
+// CLASS MANAGEMENT
+// ============================================================
+
+export interface ClassData {
+  id: string;
+  value: string;
+  label: string;
+  rosterFolderPath: string;
+  isProtected?: boolean;
+}
+
+export interface ClassApiResult extends ApiResult {
+  classes?: ClassData[];
+  class?: ClassData;
+  deletedCount?: number;
+  folderPath?: string;
+}
+
+// Load all classes
+export const loadClasses = async (): Promise<ClassApiResult> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/classes`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to load classes'
+    };
+  }
+};
+
+// Add a new class
+export const addClass = async (classData: Omit<ClassData, 'id' | 'isProtected'>): Promise<ClassApiResult> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/classes/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(classData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to add class'
+    };
+  }
+};
+
+// Edit an existing class
+export const editClass = async (id: string, classData: Omit<ClassData, 'id' | 'isProtected'>): Promise<ClassApiResult> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/classes/edit/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(classData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to edit class'
+    };
+  }
+};
+
+// Delete a class
+export const deleteClass = async (id: string): Promise<ClassApiResult> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/classes/delete/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete class'
+    };
+  }
+};
+
+// Delete all non-protected classes
+export const deleteAllClasses = async (): Promise<ClassApiResult> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/classes/deleteAll`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete classes'
+    };
+  }
+};
+
+// Open folder picker dialog
+export const selectFolder = async (): Promise<ClassApiResult> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/classes/select-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to select folder'
+    };
+  }
+};
+
+// Validate folder has CSV file
+export const validateFolder = async (folderPath: string): Promise<{ success: boolean; hasCSV: boolean; error?: string }> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/classes/validate-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderPath })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      hasCSV: false,
+      error: error instanceof Error ? error.message : 'Failed to validate folder'
+    };
+  }
+};
+
+// ============================================================
+// WINDOW CONTROLS (Electron API)
+// ============================================================
 
 // Electron API type for window controls
 declare global {

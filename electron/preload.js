@@ -1,5 +1,5 @@
 /**
- * Quiz Grader - Electron Preload Script
+ * D2L Assignment Assistant - Electron Preload Script
  * 
  * Exposes safe APIs to the renderer process.
  */

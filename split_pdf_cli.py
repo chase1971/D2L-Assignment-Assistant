@@ -467,8 +467,17 @@ def main():
         # Use standardized error formatting
         friendly_error = format_error_message(e)
         
-        # Log the error
-        log("ERR_UNEXPECTED", error=friendly_error)
+        # Check for specific errors that have their own log messages
+        error_str = str(e).lower()
+        if "unzipped folders" in error_str:
+            # Already logged with SPLIT_NO_UNZIPPED in grading_processor.py
+            pass
+        elif "wrong combined pdf" in error_str or "watermarks" in error_str:
+            # Already logged with SPLIT_WRONG_PDF in pdf_operations.py
+            pass
+        else:
+            # Log generic error for unexpected cases
+            log("ERR_UNEXPECTED", error=friendly_error)
         
         error_response = {
             "success": False,

@@ -101,6 +101,10 @@ def format_error_message(e: Exception) -> str:
     if "could not read" in error_str or "unable to read" in error_str or "cannot read" in error_str:
         return "Unable to read file"
     
+    # Check for specific errors before generic "not found"
+    if "unzipped folders" in error_str.lower():
+        return "No unzipped folders found"
+    
     if "not found" in error_str or "no such file" in error_str or "does not exist" in error_str:
         return "File not found"
     

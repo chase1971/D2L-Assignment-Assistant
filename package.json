@@ -1,7 +1,7 @@
 {
-  "name": "quiz-grader",
+  "name": "d2l-assignment-assistant",
   "version": "1.0.0",
-  "description": "Quiz Grader - Process Canvas quiz submissions and extract grades",
+  "description": "D2L Assignment Assistant - Process D2L quiz submissions and extract grades",
   "private": true,
   "main": "electron/main.js",
   "dependencies": {
@@ -36,8 +36,8 @@
     "package:dir": "npm run build && electron-builder --win --dir"
   },
   "build": {
-    "appId": "com.quizgrader.app",
-    "productName": "Quiz Grader",
+    "appId": "com.d2lassistant.app",
+    "productName": "D2L Assignment Assistant",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -56,6 +56,13 @@
           "*.py",
           "requirements.txt"
         ]
+      },
+      {
+        "from": "python",
+        "to": "python",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
@@ -73,7 +80,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Quiz Grader"
+      "shortcutName": "D2L Assignment Assistant"
     }
   }
 }

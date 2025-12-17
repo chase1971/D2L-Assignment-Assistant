@@ -496,6 +496,11 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
         unzipped_folder = os.path.join(processing_folder, "unzipped folders")
         pdf_output_folder = os.path.join(processing_folder, "PDFs")
         
+        # Check if unzipped folders exist (required for split operation)
+        if not os.path.exists(unzipped_folder):
+            log("SPLIT_NO_UNZIPPED")
+            raise Exception("No unzipped folders found")
+        
         # Find combined PDF if not already provided
         if not combined_pdf_path:
             if os.path.exists(pdf_output_folder):

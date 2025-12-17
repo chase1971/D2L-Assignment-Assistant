@@ -1,5 +1,5 @@
 /**
- * Standalone Backend Server for Quiz Grader
+ * Standalone Backend Server for D2L Assignment Assistant
  * Run with: node server.js
  * 
  * This server can run independently without Electron for development/testing.
@@ -50,8 +50,37 @@ function writeLog(message, isError = false) {
 }
 
 // Find Python executable
+// In packaged app, checks for bundled Python first, then system Python
 async function findPython() {
-  const possiblePaths = [
+  const possiblePaths = [];
+  
+  // First, check for bundled Python (in packaged app)
+  if (process.resourcesPath) {
+    // Check for portable Python in resources
+    const bundledPaths = [
+      path.join(process.resourcesPath, 'python', 'python.exe'),
+      path.join(process.resourcesPath, 'python', 'pythonw.exe'),
+      path.join(process.resourcesPath, '..', 'python', 'python.exe'),
+      path.join(process.resourcesPath, '..', 'python', 'pythonw.exe'),
+      // Also check in app directory (for portable installs)
+      path.join(process.resourcesPath, '..', '..', 'python', 'python.exe'),
+      path.join(process.resourcesPath, '..', '..', 'python', 'pythonw.exe'),
+    ];
+    possiblePaths.push(...bundledPaths);
+  }
+  
+  // Also check in app directory relative to server.js (for development/portable)
+  const appDir = __dirname;
+  const appPythonPaths = [
+    path.join(appDir, 'python', 'python.exe'),
+    path.join(appDir, 'python', 'pythonw.exe'),
+    path.join(path.dirname(appDir), 'python', 'python.exe'),
+    path.join(path.dirname(appDir), 'python', 'pythonw.exe'),
+  ];
+  possiblePaths.push(...appPythonPaths);
+  
+  // Then check system Python installations
+  const systemPaths = [
     'python',
     'python3',
     'C:\\Python311\\python.exe',
@@ -59,7 +88,9 @@ async function findPython() {
     'C:\\Python39\\python.exe',
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python310', 'python.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python39', 'python.exe'),
   ];
+  possiblePaths.push(...systemPaths);
 
   for (const pythonPath of possiblePaths) {
     try {
@@ -67,6 +98,10 @@ async function findPython() {
         const proc = spawn(pythonPath, ['--version'], { shell: true });
         proc.on('close', (code) => resolve(code === 0));
         proc.on('error', () => resolve(false));
+        proc.stdout.on('data', () => {}); // Consume output
+        proc.stderr.on('data', () => {}); // Consume errors
+        // Timeout after 5 seconds
+        setTimeout(() => resolve(false), 5000);
       });
       if (result) {
         writeLog(`Found Python at: ${pythonPath}`);
@@ -77,7 +112,7 @@ async function findPython() {
     }
   }
   
-  throw new Error('Python not found. Please install Python 3.9+ and add to PATH.');
+  throw new Error('Python not found. Please install Python 3.9+ and add to PATH, or ensure bundled Python is included in the installer.');
 }
 
 // Config file path (same directory as server.js)
@@ -132,7 +167,8 @@ function apiResponse(res, { success, logs = [], error = null, ...extra }) {
 function validateClassName(className) {
   if (!className || typeof className !== 'string') return false;
   // Block shell metacharacters that could be used for injection
-  return !/[;&|`$(){}[\]<>]/.test(className);
+  // Note: Parentheses () are allowed since arguments are properly quoted
+  return !/[;&|`${}[\]<>]/.test(className);
 }
 
 function validateDrive(drive) {
@@ -361,7 +397,7 @@ async function runPythonScript(scriptName, args = []) {
     });
 
     proc.on('close', (code) => {
-      // Try to parse JSON from stderr (our Python scripts output JSON there)
+      // Try to parse JSON from stderr (some Python scripts output JSON there)
       let jsonData = null;
       try {
         // Look for JSON in stderr
@@ -374,7 +410,24 @@ async function runPythonScript(scriptName, args = []) {
           }
         }
       } catch (e) {
-        // If JSON parsing fails, that's okay - we'll just use stdout
+        // If JSON parsing fails, that's okay - we'll try stdout
+      }
+      
+      // Try to parse JSON from stdout if not found in stderr
+      // (class_manager_cli.py and other scripts output JSON to stdout)
+      if (!jsonData) {
+        try {
+          const stdoutLines = stdout.split('\n');
+          for (const line of stdoutLines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+              jsonData = JSON.parse(trimmed);
+              break;
+            }
+          }
+        } catch (e) {
+          // If JSON parsing fails, continue without jsonData
+        }
       }
       
       // Parse stdout to extract user logs
@@ -385,6 +438,11 @@ async function runPythonScript(scriptName, args = []) {
       
       lines.forEach(line => {
         const trimmed = line.trim();
+        
+        // Skip JSON lines (we already parsed them)
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+          return;
+        }
         
         // New format: [LOG:LEVEL] message
         const logMatch = trimmed.match(/^\[LOG:(SUCCESS|ERROR|WARNING|INFO)\] (.+)$/);
@@ -418,11 +476,12 @@ async function runPythonScript(scriptName, args = []) {
       });
       
       resolve({
-        success: code === 0,
+        success: jsonData?.success ?? (code === 0),
         output: stdout,
         error: stderr,
         code,
-        data: jsonData,  // Include parsed JSON data if available
+        ...jsonData,  // Spread JSON fields (class, classes, error, etc.)
+        data: jsonData,  // Keep for backward compatibility
         userLogs         // User-facing logs with level info
       });
     });
@@ -956,7 +1015,7 @@ app.post('/api/quiz/open-folder', async (req, res) => {
 
 app.post('/api/quiz/clear-data', async (req, res) => {
   try {
-    const { drive, className, assignmentName, saveFoldersAndPdf, saveCombinedPdf } = req.body;
+    const { drive, className, assignmentName, saveFoldersAndPdf, saveCombinedPdf, deleteEverything, deleteArchivedToo } = req.body;
     
     if (!validateClassName(className)) {
       return apiResponse(res, { success: false, error: 'Invalid class name' });
@@ -971,7 +1030,13 @@ app.post('/api/quiz/clear-data', async (req, res) => {
       args.push('--save-folders-and-pdf');
     } else if (saveCombinedPdf) {
       args.push('--save-combined-pdf');
+    } else if (deleteEverything) {
+      args.push('--delete-everything');
+    } else if (deleteArchivedToo) {
+      // deleteAll with deleteArchivedToo=true: also delete archived folder
+      args.push('--delete-all-with-archived');
     }
+    // else default is --delete-all (only deletes processing folder, keeps archived)
     
     const result = await runPythonScript('clear_data_cli.py', args);
     
@@ -1270,6 +1335,195 @@ app.post('/api/kill-processes', async (req, res) => {
 });
 
 // ============================================================
+// CLASS MANAGEMENT ENDPOINTS
+// ============================================================
+
+// Load all classes
+app.get('/api/classes', async (req, res) => {
+  try {
+    const result = await runPythonScript('class_manager_cli.py', ['list']);
+    
+    if (result.success && result.classes) {
+      apiResponse(res, { success: true, classes: result.classes });
+    } else {
+      apiResponse(res, { success: false, error: result.error || 'Failed to load classes' });
+    }
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Add a new class
+app.post('/api/classes/add', async (req, res) => {
+  try {
+    const { value, label, rosterFolderPath } = req.body;
+    
+    if (!value || !label) {
+      return apiResponse(res, { success: false, error: 'Missing required parameters: value, label' });
+    }
+    
+    const result = await runPythonScript('class_manager_cli.py', [
+      'add',
+      value,
+      label,
+      rosterFolderPath || ''
+    ]);
+    
+    if (result.success) {
+      apiResponse(res, { success: true, class: result.class });
+    } else {
+      apiResponse(res, { success: false, error: result.error || 'Failed to add class' });
+    }
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Edit an existing class
+app.put('/api/classes/edit/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { value, label, rosterFolderPath } = req.body;
+    
+    if (!value || !label) {
+      return apiResponse(res, { success: false, error: 'Missing required parameters: value, label' });
+    }
+    
+    const result = await runPythonScript('class_manager_cli.py', [
+      'edit',
+      id,
+      value,
+      label,
+      rosterFolderPath || ''
+    ]);
+    
+    if (result.success) {
+      apiResponse(res, { success: true });
+    } else {
+      apiResponse(res, { success: false, error: result.error || 'Failed to edit class' });
+    }
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Delete a class
+app.delete('/api/classes/delete/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await runPythonScript('class_manager_cli.py', ['delete', id]);
+    
+    if (result.success) {
+      apiResponse(res, { success: true });
+    } else {
+      apiResponse(res, { success: false, error: result.error || 'Failed to delete class' });
+    }
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Delete all non-protected classes
+app.delete('/api/classes/deleteAll', async (req, res) => {
+  try {
+    const result = await runPythonScript('class_manager_cli.py', ['deleteAll']);
+    
+    if (result.success) {
+      apiResponse(res, { success: true, deletedCount: result.deletedCount || 0 });
+    } else {
+      apiResponse(res, { success: false, error: result.error || 'Failed to delete classes' });
+    }
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Validate folder has CSV file
+app.post('/api/classes/validate-folder', async (req, res) => {
+  try {
+    const { folderPath } = req.body;
+    
+    if (!folderPath) {
+      return apiResponse(res, { success: false, hasCSV: false, error: 'Folder path is required' });
+    }
+    
+    if (!fs.existsSync(folderPath)) {
+      return apiResponse(res, { success: false, hasCSV: false, error: 'Folder does not exist' });
+    }
+    
+    if (!fs.statSync(folderPath).isDirectory()) {
+      return apiResponse(res, { success: false, hasCSV: false, error: 'Path is not a directory' });
+    }
+    
+    const files = fs.readdirSync(folderPath);
+    const hasCSV = files.some(file => file.toLowerCase().endsWith('.csv'));
+    
+    apiResponse(res, { success: true, hasCSV });
+  } catch (error) {
+    apiResponse(res, { success: false, hasCSV: false, error: error.message });
+  }
+});
+
+// Open folder picker dialog
+app.post('/api/classes/select-folder', async (req, res) => {
+  try {
+    writeLog('Opening folder picker dialog...');
+    
+    // Create a temporary PowerShell script
+    const tempScriptPath = path.join(os.tmpdir(), `folder-picker-${Date.now()}.ps1`);
+    const psScript = `
+Add-Type -AssemblyName System.Windows.Forms
+$FolderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+$FolderBrowser.Description = 'Select Roster Folder'
+$FolderBrowser.ShowNewFolderButton = $false
+$result = $FolderBrowser.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    Write-Output $FolderBrowser.SelectedPath
+}
+`;
+    
+    // Write the script to a temporary file
+    fs.writeFileSync(tempScriptPath, psScript, 'utf8');
+    
+    // Execute the script
+    exec(`powershell -NoProfile -ExecutionPolicy Bypass -Sta -File "${tempScriptPath}"`, 
+      { 
+        maxBuffer: 10 * 1024 * 1024,
+        windowsHide: false
+      },
+      (error, stdout, stderr) => {
+        // Clean up the temporary script
+        try {
+          fs.unlinkSync(tempScriptPath);
+        } catch (cleanupError) {
+          writeLog(`Failed to delete temp script: ${cleanupError.message}`, true);
+        }
+        
+        const selectedPath = stdout.trim();
+        
+        writeLog(`Folder picker result: ${selectedPath || 'cancelled'}`);
+        
+        if (stderr) {
+          writeLog(`Folder picker stderr: ${stderr}`, true);
+        }
+        
+        if (selectedPath) {
+          writeLog(`Selected folder: ${selectedPath}`);
+          apiResponse(res, { success: true, folderPath: selectedPath });
+        } else {
+          writeLog('No folder selected or dialog cancelled');
+          apiResponse(res, { success: false, error: 'No folder selected' });
+        }
+      }
+    );
+  } catch (error) {
+    writeLog(`Folder picker error: ${error.message}`, true);
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// ============================================================
 // START SERVER WITH DYNAMIC PORT
 // ============================================================
 
@@ -1278,7 +1532,7 @@ function startServer(port) {
     PORT = port;
     console.log('');
     console.log('='.repeat(50));
-    console.log('  Quiz Grader Backend Server');
+    console.log('  D2L Assignment Assistant Backend Server');
     console.log('='.repeat(50));
     console.log(`  Server running at: http://localhost:${PORT}`);
     console.log(`  API test endpoint: http://localhost:${PORT}/api/test`);

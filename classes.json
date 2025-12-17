@@ -1,0 +1,18 @@
+{
+  "classes": [
+    {
+      "id": "protected-fm4202",
+      "value": "TTH 11-1220 FM 4202",
+      "label": "FM 4202 (TTH 11:00-12:20)",
+      "rosterFolderPath": "C:\\Users\\chase\\My Drive\\Rosters etc\\TTH 11-1220 FM 4202",
+      "isProtected": true
+    },
+    {
+      "id": "ff10c24b-3bdf-41ef-97fb-8200046174e4",
+      "value": "grade processing FM 4202 Quiz 4 (7.1 - 7.4) backup 2",
+      "label": "grade processing FM 4202 Quiz 4 (7.1 - 7.4) backup 2",
+      "rosterFolderPath": "C:\\Users\\chase\\My Drive\\Rosters etc\\TTH 11-1220 FM 4202\\grade processing FM 4202 Quiz 4 (7.1 - 7.4) backup 2",
+      "isProtected": false
+    }
+  ]
+}
