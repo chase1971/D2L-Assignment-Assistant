@@ -54,9 +54,14 @@ export default function NavigationBar({
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <h1 className={`font-bold tracking-wider ${isDark ? 'text-cyan-400' : 'text-[#1a2942]'}`}>
-            D2L ASSIGNMENT ASSISTANT
-          </h1>
+          <div className="flex items-baseline gap-2">
+            <h1 className={`font-bold tracking-wider ${isDark ? 'text-cyan-400' : 'text-[#1a2942]'}`}>
+              D2L ASSIGNMENT ASSISTANT
+            </h1>
+            <span className={`text-xs font-medium ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
+              v0.0.1 beta
+            </span>
+          </div>
           
           <ServerStatusIndicator serverStatus={serverStatus} isDark={isDark} />
         </div>

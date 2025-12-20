@@ -6,6 +6,12 @@ Usage: python process_quiz_cli.py <drive> <className> [zipPath]
 
 import sys
 import os
+
+# Add python-modules to path for imports
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PYTHON_MODULES_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), 'python-modules')
+sys.path.insert(0, PYTHON_MODULES_DIR)
+
 import json
 from config_reader import get_downloads_path
 from grading_processor import find_zip_file, run_grading_process
@@ -66,9 +72,10 @@ def main():
         friendly_error = format_error_message(e)
         log("ERR_GENERIC", error=friendly_error)
         
+        # Don't include error in JSON - it's already logged above
+        # The server will show the log message to the user
         error_response = {
-            "success": False,
-            "error": friendly_error
+            "success": False
         }
         print(json.dumps(error_response))
         sys.exit(1)

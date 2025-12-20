@@ -38,16 +38,13 @@ if exist "%PROJECT_DIR%python\python.exe" (
     if not exist "%PROJECT_DIR%python" mkdir "%PROJECT_DIR%python"
     
     REM Download Python embeddable package
-    set "PYTHON_URL=https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
-    set "PYTHON_ZIP=%PROJECT_DIR%python-embed.zip"
-    
     echo Downloading Python 3.11 embeddable package...
     echo This may take a few minutes...
     echo.
     
-    powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile '%PYTHON_ZIP%' -UseBasicParsing}"
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip' -OutFile '%PROJECT_DIR%python-embed.zip' -UseBasicParsing"
     
-    if not exist "%PYTHON_ZIP%" (
+    if not exist "%PROJECT_DIR%python-embed.zip" (
         echo.
         echo ERROR: Failed to download Python!
         echo Please check your internet connection and try again.
@@ -60,7 +57,7 @@ if exist "%PROJECT_DIR%python\python.exe" (
     
     REM Extract Python
     echo Extracting Python...
-    powershell -Command "Expand-Archive -Path '%PYTHON_ZIP%' -DestinationPath '%PROJECT_DIR%python' -Force"
+    powershell -Command "Expand-Archive -Path '%PROJECT_DIR%python-embed.zip' -DestinationPath '%PROJECT_DIR%python' -Force"
     
     if not exist "%PROJECT_DIR%python\python.exe" (
         echo.
@@ -73,7 +70,7 @@ if exist "%PROJECT_DIR%python\python.exe" (
     echo.
     
     REM Clean up ZIP file
-    del "%PYTHON_ZIP%" 2>nul
+    del "%PROJECT_DIR%python-embed.zip" 2>nul
     
     REM Install pip
     echo Installing pip...
@@ -81,7 +78,7 @@ if exist "%PROJECT_DIR%python\python.exe" (
     call python.exe -m ensurepip --default-pip >nul 2>&1
     if errorlevel 1 (
         echo Installing pip via get-pip.py...
-        powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile 'get-pip.py' -UseBasicParsing}"
+        powershell -Command "$url='https://bootstrap.pypa.io/get-pip.py'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $url -OutFile 'get-pip.py' -UseBasicParsing"
         call python.exe get-pip.py >nul 2>&1
         del get-pip.py 2>nul
     )

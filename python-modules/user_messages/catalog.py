@@ -242,6 +242,7 @@ MESSAGES = {
     "BACKUP_RENAME_FROM": ("   Renaming: {old_name}", "INFO", "I1077"),
     "BACKUP_RENAME_TO": ("         to: {new_name}", "INFO", "I1078"),
     "BACKUP_CREATE_FAILED": ("   Could not create backup: {error}", "ERROR", "E1036"),
+    "BACKUP_FOLDER_IN_USE": ("   ⚠️  The folder '{folder_name}' is currently open or in use.\n   Please close any File Explorer windows viewing this folder and try again.", "WARNING", "W1037"),
     
     # =========================================================================
     # SPLIT PDF / REZIP OPERATIONS
@@ -273,6 +274,7 @@ MESSAGES = {
     "SPLIT_ERRORS_HEADER": ("❌ Errors:", "ERROR", "E1040"),
     "SPLIT_ERROR_ITEM": ("   {error}", "ERROR", "E1041"),
     "SPLIT_COMPLETED": ("✅ Split PDF and rezip completed!", "SUCCESS", "S1033"),
+    "SPLIT_ZIP_LOCATION": ("📦 ZIP file location: {path}", "INFO", "I1102"),
     "SPLIT_WRONG_PDF": ("❌ Wrong combined PDF uploaded. Try again.", "ERROR", "E1052"),
     "SPLIT_NO_UNZIPPED": ("❌ No unzipped folders found", "ERROR", "E1053"),
     

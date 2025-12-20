@@ -7,6 +7,12 @@ Auto-assigns 10 points to all submissions (no OCR needed)
 
 import sys
 import os
+
+# Add python-modules to path for imports
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PYTHON_MODULES_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), 'python-modules')
+sys.path.insert(0, PYTHON_MODULES_DIR)
+
 import json
 import argparse
 from config_reader import get_downloads_path

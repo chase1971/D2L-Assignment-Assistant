@@ -6,6 +6,12 @@ Usage: python clear_data_cli.py <drive> <className> [assignmentName] [--save-fol
 
 import sys
 import os
+
+# Add python-modules to path for imports
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PYTHON_MODULES_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), 'python-modules')
+sys.path.insert(0, PYTHON_MODULES_DIR)
+
 import json
 import shutil
 import time

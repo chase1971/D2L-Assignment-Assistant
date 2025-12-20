@@ -12,8 +12,14 @@ Output: JSON with results
 """
 
 import sys
-import json
 import os
+
+# Add python-modules to path for imports
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PYTHON_MODULES_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), 'python-modules')
+sys.path.insert(0, PYTHON_MODULES_DIR)
+
+import json
 from glob import glob
 from config_reader import get_downloads_path, get_rosters_path
 

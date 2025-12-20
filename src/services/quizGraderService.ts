@@ -224,7 +224,7 @@ export const splitPdfUpload = async (drive: string, selectedClass: string, file:
   }
 };
 
-export const getPdfsFolderPath = async (drive: string, selectedClass: string): Promise<{ targetPath: string; existingPath: string } | null> => {
+export const getPdfsFolderPath = async (drive: string, selectedClass: string): Promise<{ targetPath: string; existingPath: string; classFolder?: string | null } | null> => {
   try {
     const response = await fetch(`${API_BASE_URL}/quiz/get-pdfs-folder`, {
       method: 'POST',

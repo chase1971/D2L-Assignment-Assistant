@@ -917,11 +917,12 @@ export default function Option2() {
             let successCount = 0;
             let failCount = 0;
             
-            for (const assignmentName of assignmentsList) {
+            // If deleteEverything is true, only call once (not per assignment)
+            if (deleteEverything) {
               const result = await clearAllData(
                 drive, 
                 selectedClass, 
-                assignmentName as string, 
+                assignmentsList[0] as string,  // Just use first assignment name (ignored anyway)
                 saveFoldersAndPdf, 
                 saveCombinedPdf,
                 deleteEverything,
@@ -930,10 +931,31 @@ export default function Option2() {
               );
               
               if (result.success) {
-                successCount++;
+                successCount = assignmentsList.length;  // Count all as success
               } else {
-                failCount++;
+                failCount = assignmentsList.length;
                 displayError(`  ❌ Failed: ${result.error || 'Unknown error'}`);
+              }
+            } else {
+              // Normal mode - loop through assignments
+              for (const assignmentName of assignmentsList) {
+                const result = await clearAllData(
+                  drive, 
+                  selectedClass, 
+                  assignmentName as string, 
+                  saveFoldersAndPdf, 
+                  saveCombinedPdf,
+                  deleteEverything,
+                  deleteArchivedToo,
+                  addLog
+                );
+                
+                if (result.success) {
+                  successCount++;
+                } else {
+                  failCount++;
+                  displayError(`  ❌ Failed: ${result.error || 'Unknown error'}`);
+                }
               }
             }
             
@@ -986,11 +1008,12 @@ export default function Option2() {
           let successCount = 0;
           let failCount = 0;
           
-          for (const assignmentName of assignmentsList) {
+          // If deleteEverything is true, only call once (not per assignment)
+          if (deleteEverything) {
             const result = await clearAllData(
               drive, 
               selectedClass, 
-              assignmentName as string, 
+              assignmentsList[0] as string,  // Just use first assignment name (ignored anyway)
               saveFoldersAndPdf, 
               saveCombinedPdf,
               deleteEverything,
@@ -999,10 +1022,31 @@ export default function Option2() {
             );
             
             if (result.success) {
-              successCount++;
+              successCount = assignmentsList.length;  // Count all as success
             } else {
-              failCount++;
+              failCount = assignmentsList.length;
               displayError(`  ❌ Failed: ${result.error || 'Unknown error'}`);
+            }
+          } else {
+            // Normal mode - loop through assignments
+            for (const assignmentName of assignmentsList) {
+              const result = await clearAllData(
+                drive, 
+                selectedClass, 
+                assignmentName as string, 
+                saveFoldersAndPdf, 
+                saveCombinedPdf,
+                deleteEverything,
+                deleteArchivedToo,
+                addLog
+              );
+              
+              if (result.success) {
+                successCount++;
+              } else {
+                failCount++;
+                displayError(`  ❌ Failed: ${result.error || 'Unknown error'}`);
+              }
             }
           }
           

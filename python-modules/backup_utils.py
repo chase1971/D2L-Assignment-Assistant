@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import time
 from user_messages import log
 
 
@@ -69,6 +70,14 @@ def backup_existing_folder(
                 log("BACKUP_SUCCESS")
                 log("EMPTY_LINE")
             return True
+        except (OSError, PermissionError) as e:
+            # Check if it's a file locking issue (folder is open or file in use)
+            if "Access is denied" in str(e) or "WinError 5" in str(e):
+                log("BACKUP_FOLDER_IN_USE", folder_name=base_name)
+            else:
+                log("BACKUP_CREATE_FAILED", error=str(e))
+            log("EMPTY_LINE")
+            return False
         except Exception as e:
             log("BACKUP_CREATE_FAILED", error=str(e))
             log("EMPTY_LINE")

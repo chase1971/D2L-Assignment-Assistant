@@ -168,7 +168,6 @@ export default function ClearOptionsModal({
                   onClick={() => setSelectedOption(option.value)}
                   onMouseDown={() => setPressedOption(option.value)}
                   onMouseUp={() => setPressedOption(null)}
-                  onMouseLeave={() => setPressedOption(null)}
                   style={{
                     width: '100%',
                     padding: '12px 16px',
@@ -204,6 +203,7 @@ export default function ClearOptionsModal({
                     }
                   }}
                   onMouseLeave={(e) => {
+                    setPressedOption(null);
                     if (!isSelected && !isPressed) {
                       e.currentTarget.style.backgroundColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
                       e.currentTarget.style.borderColor = isDark ? '#3a4962' : '#999';

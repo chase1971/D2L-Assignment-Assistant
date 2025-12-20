@@ -7,12 +7,68 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn, fork, exec } = require('child_process');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow = null;
 let serverProcess = null;
 
 // Determine if we're in development or production
 const isDev = !app.isPackaged;
+
+// Configure auto-updater
+autoUpdater.autoDownload = false; // Don't auto-download, let user decide
+autoUpdater.autoInstallOnAppQuit = true; // Install when app closes
+
+// Auto-updater event handlers
+autoUpdater.on('checking-for-update', () => {
+  console.log('Checking for updates...');
+});
+
+autoUpdater.on('update-available', (info) => {
+  console.log('Update available:', info.version);
+  if (mainWindow) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Available',
+      message: `Version ${info.version} is available!`,
+      detail: 'Would you like to download and install it?',
+      buttons: ['Download & Install', 'Later']
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.downloadUpdate();
+      }
+    });
+  }
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  console.log('No updates available. Current version:', info.version);
+});
+
+autoUpdater.on('error', (err) => {
+  console.error('Update error:', err);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  console.log(`Download progress: ${progressObj.percent.toFixed(2)}%`);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('Update downloaded:', info.version);
+  if (mainWindow) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Ready',
+      message: `Version ${info.version} has been downloaded`,
+      detail: 'The update will be installed when you close the application.',
+      buttons: ['Restart Now', 'Later']
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  }
+});
 
 // Check if server is already running (for dev mode with concurrently)
 function isServerRunning() {
@@ -216,6 +272,15 @@ app.whenReady().then(async () => {
     
     // Then create window
     createWindow();
+    
+    // Auto-update disabled - using manual patch system instead
+    // Check for updates after window is created (only in production)
+    // if (!isDev) {
+    //   setTimeout(() => {
+    //     console.log('Checking for updates...');
+    //     autoUpdater.checkForUpdates();
+    //   }, 3000); // Wait 3 seconds after launch
+    // }
   } catch (error) {
     console.error('Failed to start:', error);
   }

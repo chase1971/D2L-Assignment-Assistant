@@ -149,10 +149,10 @@ function saveConfig(config) {
 
 // Python scripts path
 // In packaged app: scripts are in resources/scripts (via extraResources)
-// In development: scripts are in same directory as server.js
+// In development: scripts are in scripts/ subdirectory
 const SCRIPTS_PATH = process.resourcesPath 
   ? path.join(process.resourcesPath, 'scripts')
-  : __dirname;
+  : path.join(__dirname, 'scripts');
 
 // ============================================================
 // HELPER FUNCTIONS

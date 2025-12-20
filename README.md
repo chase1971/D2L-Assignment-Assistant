@@ -1,117 +1,89 @@
-# Quiz Grader - New UI
+# D2L Assignment Assistant
 
-A modern React frontend for the Quiz Grader application with a Figma-designed metallic button style.
+**Version 0.0.1 (Beta)** - A desktop application for streamlining D2L/Brightspace assignment grading.
 
-## Quick Start (Development/Testing)
+## Overview
 
-### Option 1: Run Both Servers Together (Recommended)
+D2L Assignment Assistant automates the tedious parts of grading assignments from D2L/Brightspace. It extracts student submissions from ZIP files, combines PDFs for efficient grading, uses OCR to extract written grades, and prepares files for re-upload.
+
+## Quick Start
+
+### For End Users
+
+1. Run the installer: `D2L Assignment Assistant Setup 0.0.1.exe`
+2. Launch the application
+3. Configure your class using "CLASS SETUP"
+4. Start processing assignments!
+
+### For Developers
+
+**Build from source:**
+```bash
+.\BUILD.bat
+```
+
+This script will:
+- Clean old builds
+- Check for/download bundled Python
+- Build the frontend (Vite/React)
+- Package the Electron app
+- Launch the installer
+
+**Development mode:**
 ```bash
 npm run dev:all
 ```
-This starts both the backend server (port 5000) and the frontend dev server (port 3000).
 
-### Option 2: Run Separately
-In one terminal:
-```bash
-npm run dev:server
-```
+See [PROJECT_SYNOPSIS.md](PROJECT_SYNOPSIS.md) for detailed development documentation.
 
-In another terminal:
-```bash
-npm run dev:frontend
-```
+## Key Features
 
-Then open http://localhost:3000 in your browser.
+- **Process Quizzes**: Extract, combine, and watermark student submissions
+- **Extract Grades**: OCR-powered grade extraction from annotated PDFs
+- **Process Completions**: Auto-assign completion grades (10 points)
+- **Split PDF & Rezip**: Break combined PDF back into individual files for D2L upload
+- **Class Management**: Organize multiple classes with custom configurations
+- **Clear Data**: Flexible cleanup with selective preservation options
 
-## Available Scripts
+## System Requirements
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start frontend dev server only (port 3000) |
-| `npm run dev:server` | Start backend server only (port 5000) |
-| `npm run dev:frontend` | Same as `npm run dev` |
-| `npm run dev:all` | Start both frontend and backend together |
-| `npm run build` | Build the frontend for production |
-| `npm run package` | Build and package as Windows executable |
-| `npm run package:dir` | Build and package (unpacked, for testing) |
-
-## Building an Executable
-
-### Prerequisites
-- Node.js 18+ 
-- Python 3.9+ (for the backend scripts)
-- All Python dependencies installed (`pip install -r ../requirements.txt`)
-
-### Build Steps
-
-1. **Install dependencies** (if not already done):
-   ```bash
-   npm install
-   ```
-
-2. **Build the frontend**:
-   ```bash
-   npm run build
-   ```
-
-3. **Package as executable**:
-   ```bash
-   npm run package
-   ```
-   
-   This creates the installer in the `dist/` folder.
-
-### Quick Test Build
-To test the build without creating an installer:
-```bash
-npm run package:dir
-```
-This creates an unpacked version in `dist/win-unpacked/` that you can run directly.
+- **OS**: Windows 10/11
+- **Python**: 3.11+ (bundled with installer)
+- **Node.js**: 18+ (for development only)
+- **Storage**: 500MB+ free space
 
 ## Project Structure
 
 ```
-NewStyle/
-├── src/                    # React frontend source
-│   ├── components/         # React components (Option1, Option2, Option3)
-│   ├── services/           # API service for backend communication
-│   └── styles/             # Global CSS styles
+D2L-Assignment-Assistant/
+├── src/                    # React frontend (TypeScript)
 ├── electron/               # Electron main process
-│   ├── main.js             # Electron entry point
-│   └── preload.js          # Preload script for IPC
-├── server.js               # Standalone Express backend server
+├── scripts/                # Python CLI scripts
+├── python-modules/         # Reusable Python modules
+├── docs/                   # Documentation
+│   ├── plans/              # Planning documents
+│   └── archived/           # Outdated documentation
+├── dev-tools/              # Testing and development utilities
+├── server.js               # Node.js backend (Express)
+├── BUILD.bat               # Build script
 ├── package.json            # Dependencies and scripts
-├── vite.config.ts          # Vite configuration
-└── dist/                   # Built files (after `npm run build`)
+├── PROJECT_SYNOPSIS.md     # Detailed architecture documentation
+└── CHANGELOG.md            # Version history
 ```
 
-## How It Works
+## Documentation
 
-1. **Frontend** (React + Vite): Modern UI at `http://localhost:3000`
-2. **Backend** (Express): API server at `http://localhost:5000`
-3. **Python Scripts**: The backend calls Python scripts in the parent directory to process quizzes
+- **[PROJECT_SYNOPSIS.md](PROJECT_SYNOPSIS.md)**: Complete architecture, workflows, and development guide
+- **[CHANGELOG.md](CHANGELOG.md)**: Version history and release notes
+- **docs/archived/**: Older documentation (kept for reference)
 
-## Troubleshooting
+## Support & Issues
 
-### "Cannot connect to backend"
-Make sure the backend server is running:
-```bash
-npm run dev:server
-```
+This is beta software. If you encounter issues:
+1. Check the logs in the application
+2. Review [PROJECT_SYNOPSIS.md](PROJECT_SYNOPSIS.md) for technical details
+3. Ensure your class folder structure matches the expected format
 
-### "Python not found"
-Install Python 3.9+ and add it to your PATH.
+## License
 
-### Port already in use
-- Backend uses port 5000
-- Frontend uses port 3000
-Kill any processes using these ports or change the ports in the config.
-
-## UI Options
-
-The app includes three UI layout options:
-- **Option1**: Sidebar navigation with compact main area
-- **Option2**: Horizontal top bar with grid layout (default)
-- **Option3**: Compact dashboard with 50/50 split
-
-To switch, edit `src/App.tsx` and import a different option.
+Internal use only.

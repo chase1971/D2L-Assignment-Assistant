@@ -6,6 +6,12 @@ Usage: python split_pdf_cli.py <drive> <className>
 
 import sys
 import os
+
+# Add python-modules to path for imports
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PYTHON_MODULES_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), 'python-modules')
+sys.path.insert(0, PYTHON_MODULES_DIR)
+
 import json
 import zipfile
 import shutil
@@ -234,7 +240,11 @@ def generate_index_html(student_folders, processing_folder, original_index_path=
     return '\n'.join(html_lines)
 
 def rezip_folders(drive, class_name, assignment_name, original_zip_name, processing_folder=None, unzipped_folder=None):
-    """Rezip the processed folders back into a ZIP file"""
+    """Rezip the processed folders back into a ZIP file
+    
+    Returns:
+        tuple: (success: bool, zip_path: str or None)
+    """
     try:
         # Use provided folders if available (from run_reverse_process), otherwise find them
         if not processing_folder or not unzipped_folder:
@@ -260,7 +270,7 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, process
         
         if not os.path.exists(unzipped_folder):
             log("SPLIT_UNZIPPED_NOT_FOUND")
-            return False
+            return False, None
         
         # Create new ZIP file in grade processing folder
         new_zip_path = os.path.join(processing_folder, original_zip_name)
@@ -340,13 +350,13 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, process
                         # Removed verbose logging: "SPLIT_ADDED_TO_ZIP"
         
         # Removed verbose logging: "SPLIT_ZIP_CREATED"
-        return True
+        return True, new_zip_path
         
     except Exception as e:
         log("SPLIT_ERROR_CREATING_ZIP", error=str(e))
         import traceback
         log("SPLIT_ERROR_DETAILS", details=traceback.format_exc())
-        return False
+        return False, None
 
 def main():
     if len(sys.argv) < 3 or len(sys.argv) > 5:
@@ -396,10 +406,7 @@ def main():
         result = run_reverse_process(drive, class_name, pdf_path)
         
         students_count = len(result.submitted) if hasattr(result, 'submitted') else 0
-        if students_count > 0:
-            log("SPLIT_SUCCESS_COUNT", count=students_count)
-        else:
-            log("SPLIT_NO_STUDENTS")
+        # Don't log split success count - only show final completion message
         
         # Get assignment name from result if available, or from CLI args
         if not assignment_name and hasattr(result, 'assignment_name'):
@@ -408,7 +415,12 @@ def main():
         # Get ZIP name from assignment name (preferred) or fallback to finding most recent
         original_zip_name = None
         if assignment_name:
-            original_zip_name = get_zip_name_from_assignment(assignment_name)
+            # If assignment_name is a full path to a ZIP, extract just the filename
+            if assignment_name.endswith('.zip'):
+                original_zip_name = os.path.basename(assignment_name)
+            else:
+                # Otherwise construct the ZIP name from assignment name
+                original_zip_name = get_zip_name_from_assignment(assignment_name)
         else:
             # Fallback: find most recent ZIP in Downloads (legacy behavior)
             downloads_path = get_downloads_path()
@@ -424,18 +436,24 @@ def main():
                     original_zip_name = latest_zip[1]
         
         rezip_success = False
+        zip_path = None
         if original_zip_name and assignment_name:
             # Removed verbose logging: "SPLIT_CREATING_ZIP_FILE"
             
             # Pass processing_folder and unzipped_folder from result if available
             processing_folder = getattr(result, 'processing_folder', None)
             unzipped_folder = getattr(result, 'unzipped_folder', None)
-            rezip_success = rezip_folders(drive, class_name, assignment_name, original_zip_name, 
+            rezip_success, zip_path = rezip_folders(drive, class_name, assignment_name, original_zip_name, 
                                          processing_folder, unzipped_folder)
             
-            if rezip_success:
-                # Removed verbose logging: "SPLIT_ZIP_CREATED"
-                pass
+            if rezip_success and zip_path:
+                # Log completion with ZIP folder location (not the file itself)
+                zip_folder = os.path.dirname(zip_path)
+                log("SPLIT_COMPLETED")
+                log("SPLIT_ZIP_LOCATION", path=zip_folder)
+            elif rezip_success:
+                # Success but no path (shouldn't happen)
+                log("SPLIT_COMPLETED")
             else:
                 log("SPLIT_ZIP_FAILED")
                 processing_errors.append("ZIP creation failed")
@@ -450,8 +468,7 @@ def main():
             for error in processing_errors:
                 log("SPLIT_ERROR_ITEM", error=error)
         
-        # Removed empty line before completion
-        log("SPLIT_COMPLETED")
+        # Completion message already logged above with ZIP location
         
         # Output JSON to stdout (for backend)
         response = {
@@ -479,9 +496,9 @@ def main():
             # Log generic error for unexpected cases
             log("ERR_UNEXPECTED", error=friendly_error)
         
+        # Don't include error in JSON - it's already logged above
         error_response = {
-            "success": False,
-            "error": friendly_error
+            "success": False
         }
         print(json.dumps(error_response))
         sys.exit(1)
