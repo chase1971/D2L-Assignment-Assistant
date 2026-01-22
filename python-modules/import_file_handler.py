@@ -51,6 +51,30 @@ def validate_required_columns(df: pd.DataFrame) -> Tuple[bool, Optional[List[str
     return True, None
 
 
+def _find_import_file(class_folder_path: str) -> Optional[str]:
+    """
+    Find the import file in the class folder.
+    Checks for both "Import File.csv" and "import.csv".
+    
+    Args:
+        class_folder_path: Path to the class folder
+    
+    Returns:
+        Path to the import file if found, None otherwise
+    """
+    # Try "Import File.csv" first (D2L default)
+    import_file_path = os.path.join(class_folder_path, "Import File.csv")
+    if os.path.exists(import_file_path):
+        return import_file_path
+    
+    # Try "import.csv" as fallback
+    import_file_path = os.path.join(class_folder_path, "import.csv")
+    if os.path.exists(import_file_path):
+        return import_file_path
+    
+    return None
+
+
 def _close_excel_for_file(file_path: str) -> bool:
     """
     Close any Excel process that might have the specified file open.
@@ -141,10 +165,10 @@ def validate_import_file_early(
         - is_valid: True if file exists and can be opened
         - error_message: None if valid, error message string if invalid
     """
-    import_file_path = os.path.join(class_folder_path, "Import File.csv")
+    import_file_path = _find_import_file(class_folder_path)
     
     # Check if file exists
-    if not os.path.exists(import_file_path):
+    if not import_file_path:
         return False, "❌ Import file not found. Please download a fresh import file from D2L."
     
     # Try to open and read the file
@@ -194,10 +218,10 @@ def validate_import_file_early(class_folder_path: str) -> Tuple[bool, str]:
     Returns:
         Tuple of (is_valid, error_message)
     """
-    import_file_path = os.path.join(class_folder_path, "Import File.csv")
+    import_file_path = _find_import_file(class_folder_path)
     
-    if not os.path.exists(import_file_path):
-        return False, f"Import File not found: {import_file_path}"
+    if not import_file_path:
+        return False, f"Import File not found in: {class_folder_path}"
     
     try:
         df = pd.read_csv(import_file_path, dtype=str)
@@ -234,6 +258,7 @@ def load_import_file(
 ) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
     Load the Import File.csv from a class folder.
+    Checks for both "Import File.csv" and "import.csv".
     
     Args:
         class_folder_path: Path to the class folder
@@ -242,10 +267,10 @@ def load_import_file(
     Returns:
         Tuple of (DataFrame, import_file_path) or (None, None) if not found
     """
-    import_file_path = os.path.join(class_folder_path, "Import File.csv")
+    import_file_path = _find_import_file(class_folder_path)
     
-    if not os.path.exists(import_file_path):
-        log("IMPORT_FILE_NOT_FOUND", path=import_file_path)
+    if not import_file_path:
+        log("IMPORT_FILE_NOT_FOUND", path=class_folder_path)
         return None, None
     
     try:

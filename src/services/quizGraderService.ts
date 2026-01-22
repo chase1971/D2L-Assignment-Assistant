@@ -30,6 +30,7 @@ export interface ApiResult {
   assignment_name?: string;  // From Python backend
   combined_pdf_path?: string;  // From Python backend
   confidenceScores?: ConfidenceScore[];  // For grade extraction
+  students?: Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>;  // For email functionality
   config?: {
     developerMode?: boolean;
   };
@@ -326,6 +327,15 @@ export const openImportFile = (drive: string, className: string, addLog: LogCall
     body: { drive, className },
     logMessage: '📂 Opening import file...',
     errorMessage: 'Error opening import file',
+    addLog
+  });
+
+export const loadStudentsForEmail = (drive: string, className: string, assignmentName: string | null, addLog: LogCallback): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/load-students-for-email',
+    body: { drive, className, assignmentName },
+    logMessage: '📧 Loading students from import file...',
+    errorMessage: 'Error loading students',
     addLog
   });
 

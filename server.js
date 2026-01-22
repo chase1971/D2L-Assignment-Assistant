@@ -181,26 +181,42 @@ function validateDrive(drive) {
 function getPossibleRostersPaths(drive) {
   const username = os.userInfo().username;
   // Use proper Windows path format with backslashes
-  return [
+  // Check both C and G drives
+  const paths = [
     `${drive}:\\Users\\${username}\\My Drive\\Rosters etc`,  // Standard path: C:\Users\chase\My Drive\Rosters etc
     `${drive}:\\${username}\\My Drive\\Rosters etc`,  // Alternative: C:\chase\My Drive\Rosters etc
     `${drive}:\\My Drive\\Rosters etc`,  // Direct: C:\My Drive\Rosters etc
-    path.join(os.homedir(), 'My Drive', 'Rosters etc'),  // From home directory
   ];
+  
+  // Also add G drive path if checking C drive
+  if (drive === 'C') {
+    paths.push(`G:\\My Drive\\Rosters etc`);  // G drive path: G:\My Drive\Rosters etc
+  }
+  
+  // Add home directory path
+  paths.push(path.join(os.homedir(), 'My Drive', 'Rosters etc'));  // From home directory
+  
+  return paths;
 }
 
 // Find class folder in any of the possible rosters paths
+// Checks both C and G drives automatically
 function findClassFolder(drive, className) {
-  const possiblePaths = getPossibleRostersPaths(drive);
+  // Try both C and G drives
+  const drivesToCheck = ['C', 'G'];
   
-  for (const rostersPath of possiblePaths) {
-    // Use path.join for cross-platform compatibility, but handle Windows drive paths
-    const classFolder = rostersPath.includes(':\\') 
-      ? `${rostersPath}\\${className}`  // Windows absolute path
-      : path.join(rostersPath, className);  // Relative or home directory path
+  for (const checkDrive of drivesToCheck) {
+    const possiblePaths = getPossibleRostersPaths(checkDrive);
+    
+    for (const rostersPath of possiblePaths) {
+      // Use path.join for cross-platform compatibility, but handle Windows drive paths
+      const classFolder = rostersPath.includes(':\\') 
+        ? `${rostersPath}\\${className}`  // Windows absolute path
+        : path.join(rostersPath, className);  // Relative or home directory path
       
-    if (fs.existsSync(classFolder)) {
-      return { rostersPath, classFolder };
+      if (fs.existsSync(classFolder)) {
+        return { rostersPath, classFolder };
+      }
     }
   }
   return null;
@@ -213,7 +229,14 @@ function findPdfsFolder(drive, className) {
   
   // Use proper path joining for Windows
   const separator = result.classFolder.includes(':\\') ? '\\' : path.sep;
-  const importFilePath = `${result.classFolder}${separator}Import File.csv`;
+  // Check for both "Import File.csv" and "import.csv"
+  let importFilePath = `${result.classFolder}${separator}Import File.csv`;
+  if (!fs.existsSync(importFilePath)) {
+    const altPath = `${result.classFolder}${separator}import.csv`;
+    if (fs.existsSync(altPath)) {
+      importFilePath = altPath;
+    }
+  }
   
   // Find the most recent "grade processing [CLASS_CODE] [ASSIGNMENT]" folder
   // Pattern matches both: "grade processing [CLASS_CODE] [ASSIGNMENT]" and "grade processing [ASSIGNMENT]"
@@ -393,7 +416,25 @@ async function runPythonScript(scriptName, args = []) {
 
     proc.stderr.on('data', (data) => {
       stderr += data.toString();
-      writeLog(`[Python Error] ${data.toString()}`, true);
+      const errorText = data.toString().trim();
+      
+      // Filter out harmless pypdf warnings that clutter the logs
+      const pypdfWarnings = [
+        'Object 0 0 not defined',
+        'Overwriting cache for 0 0',
+        'Object.*not defined',
+        'Overwriting cache for'
+      ];
+      
+      const isPypdfWarning = pypdfWarnings.some(pattern => {
+        const regex = new RegExp(pattern.replace(/\.\*/g, '.*'), 'i');
+        return regex.test(errorText);
+      });
+      
+      // Only log if it's not a harmless pypdf warning
+      if (!isPypdfWarning && errorText) {
+        writeLog(`[Python Error] ${errorText}`, true);
+      }
     });
 
     proc.on('close', (code) => {
@@ -620,6 +661,8 @@ app.post('/api/quiz/process-completion', async (req, res) => {
     apiResponse(res, {
       success: result.success,
       logs: getUserLogs(result),
+      combined_pdf_path: result.data?.combined_pdf_path,
+      assignment_name: result.data?.assignment_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
@@ -885,16 +928,22 @@ app.post('/api/quiz/get-pdfs-folder', async (req, res) => {
       });
     } else {
       // Try to construct path even if class folder not found
-      const possiblePaths = getPossibleRostersPaths(drive || 'C');
-      if (possiblePaths.length > 0) {
-        // Find the first existing rosters path
-        let existingRostersPath = possiblePaths[0];
+      // Check both C and G drives
+      const drivesToCheck = ['C', 'G'];
+      let existingRostersPath = null;
+      
+      for (const checkDrive of drivesToCheck) {
+        const possiblePaths = getPossibleRostersPaths(checkDrive);
         for (const rostersPath of possiblePaths) {
           if (fs.existsSync(rostersPath)) {
             existingRostersPath = rostersPath;
             break;
           }
         }
+        if (existingRostersPath) break;
+      }
+      
+      if (existingRostersPath) {
         
         // Try to find the most recent grade processing folder
         const separator = existingRostersPath.includes(':\\') ? '\\' : path.sep;
@@ -1125,6 +1174,202 @@ app.post('/api/open-file', async (req, res) => {
         apiResponse(res, { success: false, error: error.message });
       } else {
         apiResponse(res, { success: true, message: 'File opened' });
+      }
+    });
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Load students from import file for email functionality
+app.post('/api/load-students-for-email', async (req, res) => {
+  try {
+    const { drive, className, assignmentName } = req.body;
+    
+    if (!drive || !className) {
+      return apiResponse(res, { success: false, error: 'Missing required parameters' });
+    }
+    
+    // Find import file using helper
+    const folders = findPdfsFolder(drive, className);
+    if (!folders) {
+      writeLog(`Class folder not found for drive: ${drive}, className: ${className}`, true);
+      return apiResponse(res, { success: false, error: 'Class folder not found' });
+    }
+    
+    const { importFilePath } = folders;
+    
+    // Check for both "Import File.csv" and "import.csv"
+    let actualImportPath = importFilePath;
+    if (!fs.existsSync(actualImportPath)) {
+      // Try "import.csv" instead
+      const altPath = importFilePath.replace(/Import File\.csv$/i, 'import.csv');
+      if (fs.existsSync(altPath)) {
+        actualImportPath = altPath;
+      } else {
+        writeLog(`Import file not found at either location`, true);
+        return apiResponse(res, { success: false, error: `Import file not found. Checked: ${importFilePath} and ${altPath}` });
+      }
+    }
+    
+    // Read and parse CSV (handle quoted fields properly)
+    const csvContent = fs.readFileSync(actualImportPath, 'utf8');
+    
+    // Simple CSV parser that handles quoted fields
+    function parseCSVLine(line) {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+        
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            // Escaped quote
+            current += '"';
+            i++; // Skip next quote
+          } else {
+            // Toggle quote state
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          // End of field
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      
+      // Add last field
+      result.push(current.trim());
+      return result;
+    }
+    
+    const lines = csvContent.split(/\r?\n/).filter(line => line.trim());
+    
+    if (lines.length < 2) {
+      return apiResponse(res, { success: false, error: 'Import file is empty or invalid' });
+    }
+    
+    // Parse header
+    const header = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
+    const firstNameIdx = header.findIndex(h => h.toLowerCase() === 'first name');
+    const lastNameIdx = header.findIndex(h => h.toLowerCase() === 'last name');
+    const emailIdx = header.findIndex(h => h.toLowerCase() === 'email');
+    
+    if (firstNameIdx === -1 || lastNameIdx === -1) {
+      return apiResponse(res, { success: false, error: 'Import file missing required columns (First Name, Last Name)' });
+    }
+    
+    // Find assignment column if assignmentName is provided
+    let assignmentColumnIdx = -1;
+    if (assignmentName) {
+      const assignmentColumnName = `${assignmentName} Points Grade`;
+      
+      assignmentColumnIdx = header.findIndex(h => h.toLowerCase() === assignmentColumnName.toLowerCase());
+      
+      if (assignmentColumnIdx === -1) {
+        // Try to find any column that contains the assignment name
+        const partialMatch = header.findIndex(h => 
+          h.toLowerCase().includes(assignmentName.toLowerCase()) && 
+          h.toLowerCase().includes('points grade')
+        );
+        if (partialMatch !== -1) {
+          assignmentColumnIdx = partialMatch;
+        } else {
+          // Try just the assignment name without " Points Grade"
+          const nameOnlyMatch = header.findIndex(h => 
+            h.toLowerCase().trim() === assignmentName.toLowerCase().trim()
+          );
+          if (nameOnlyMatch !== -1) {
+            assignmentColumnIdx = nameOnlyMatch;
+          }
+        }
+      }
+    }
+    
+    // Parse student rows
+    const students = [];
+    for (let i = 1; i < lines.length; i++) {
+      const row = parseCSVLine(lines[i]).map(c => c.replace(/^"|"$/g, ''));
+      
+      if (row.length <= Math.max(firstNameIdx, lastNameIdx)) continue;
+      
+      const firstName = row[firstNameIdx] || '';
+      const lastName = row[lastNameIdx] || '';
+      
+      // Skip empty rows
+      if (!firstName.trim() || !lastName.trim()) continue;
+      
+      const fullName = `${firstName.trim()} ${lastName.trim()}`;
+      const email = emailIdx !== -1 && row[emailIdx] ? row[emailIdx].trim() : undefined;
+      
+      // Check if student has assignment (has a value in the assignment column)
+      // Completion processing puts "10" for students who submitted and "0" for those who didn't
+      // "unreadable" is also treated as "didn't submit" but we track it separately
+      let hasAssignment = false;
+      let isUnreadable = false;
+      if (assignmentColumnIdx !== -1 && row.length > assignmentColumnIdx) {
+        const assignmentValue = row[assignmentColumnIdx] || '';
+        const trimmedValue = assignmentValue.trim();
+        const trimmedValueLower = trimmedValue.toLowerCase();
+        
+        // Check if it's unreadable
+        isUnreadable = trimmedValueLower === 'unreadable';
+        // A student has an assignment if the value is not empty, not "0", and not "unreadable"
+        // Values like "10" or any grade mean they have an assignment
+        hasAssignment = trimmedValue !== '' && 
+                       trimmedValue !== '0' &&
+                       !isUnreadable &&
+                       trimmedValueLower !== 'nan' && 
+                       trimmedValueLower !== 'none';
+      } else if (assignmentColumnIdx === -1 && assignmentName) {
+        // If assignment column not found but assignment name was provided,
+        // we can't determine submission status, so default to false
+        hasAssignment = false;
+      }
+      
+      students.push({
+        name: fullName,
+        email: email,
+        hasAssignment: hasAssignment,
+        isUnreadable: isUnreadable
+      });
+    }
+    
+    return apiResponse(res, { 
+      success: true, 
+      students: students,
+      assignmentName: assignmentName || null
+    });
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Launch Firefox with Outlook URL
+app.post('/api/launch-firefox-outlook', async (req, res) => {
+  try {
+    const firefoxPath = 'C:\\Program Files\\Mozilla Firefox\\firefox.exe';
+    const outlookUrl = 'https://outlook.office.com/mail/';
+    
+    // Check if Firefox exists
+    if (!fs.existsSync(firefoxPath)) {
+      return apiResponse(res, { success: false, error: 'Firefox not found at expected path' });
+    }
+    
+    writeLog(`Launching Firefox with Outlook URL...`);
+    
+    // Launch Firefox with the Outlook URL
+    exec(`"${firefoxPath}" "${outlookUrl}"`, (error) => {
+      if (error) {
+        writeLog(`Error launching Firefox: ${error.message}`, true);
+        apiResponse(res, { success: false, error: error.message });
+      } else {
+        apiResponse(res, { success: true, message: 'Firefox launched' });
       }
     });
   } catch (error) {
@@ -1448,19 +1693,29 @@ app.post('/api/classes/validate-folder', async (req, res) => {
       return apiResponse(res, { success: false, hasCSV: false, error: 'Folder path is required' });
     }
     
-    if (!fs.existsSync(folderPath)) {
-      return apiResponse(res, { success: false, hasCSV: false, error: 'Folder does not exist' });
+    // Normalize the path - handle both single and double backslashes
+    const normalizedPath = path.normalize(folderPath.replace(/\\/g, path.sep));
+    
+    writeLog(`[Validate Folder] Checking path: ${normalizedPath}`);
+    writeLog(`[Validate Folder] Path exists: ${fs.existsSync(normalizedPath)}`);
+    
+    if (!fs.existsSync(normalizedPath)) {
+      writeLog(`[Validate Folder] ERROR: Folder does not exist at: ${normalizedPath}`);
+      return apiResponse(res, { success: false, hasCSV: false, error: `Folder does not exist: ${normalizedPath}` });
     }
     
-    if (!fs.statSync(folderPath).isDirectory()) {
+    if (!fs.statSync(normalizedPath).isDirectory()) {
+      writeLog(`[Validate Folder] ERROR: Path is not a directory: ${normalizedPath}`);
       return apiResponse(res, { success: false, hasCSV: false, error: 'Path is not a directory' });
     }
     
-    const files = fs.readdirSync(folderPath);
+    const files = fs.readdirSync(normalizedPath);
     const hasCSV = files.some(file => file.toLowerCase().endsWith('.csv'));
     
+    writeLog(`[Validate Folder] Success: Found ${files.length} files, hasCSV: ${hasCSV}`);
     apiResponse(res, { success: true, hasCSV });
   } catch (error) {
+    writeLog(`[Validate Folder] Exception: ${error.message}`);
     apiResponse(res, { success: false, hasCSV: false, error: error.message });
   }
 });

@@ -105,7 +105,13 @@ def format_error_message(e: Exception) -> str:
     if "unzipped folders" in error_str.lower():
         return "No unzipped folders found"
     
+    # Preserve context for "not found" errors if they contain useful information
     if "not found" in error_str or "no such file" in error_str or "does not exist" in error_str:
+        # If the error message contains a path or specific details, preserve them
+        original_msg = str(e)
+        if ":" in original_msg or "folder" in error_str or "file" in error_str:
+            # Keep the original message if it has context
+            return original_msg
         return "File not found"
     
     if "corrupted" in error_str or "invalid" in error_str or "bad" in error_str:

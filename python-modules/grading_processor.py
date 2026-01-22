@@ -34,6 +34,46 @@ from grading_helpers import (
 # HELPER FUNCTIONS
 # ============================================================================
 
+def _find_class_folder(class_folder_name: str) -> Optional[str]:
+    """
+    Find the class folder by checking multiple possible locations.
+    Checks both G:\ and C:\ drives, similar to how import files are found.
+    
+    Args:
+        class_folder_name: Name of the class folder (e.g., 'FM 4101 TTH 8-920')
+    
+    Returns:
+        Path to the class folder if found, None otherwise
+    """
+    # Try configured rosters path first
+    rosters_path = get_rosters_path()
+    class_folder_path = os.path.join(rosters_path, class_folder_name)
+    if os.path.exists(class_folder_path):
+        return class_folder_path
+    
+    # Try both G:\ and C:\ drives
+    drives_to_try = ['G', 'C']
+    username = os.getenv('USERNAME', 'chase')
+    
+    for drive_letter in drives_to_try:
+        # Try two path patterns:
+        # 1. Direct drive root (for mapped drives like G: Google Drive)
+        #    G:\My Drive\Rosters etc\{class_folder_name}
+        # 2. User profile path (for local drives like C:)
+        #    C:\Users\chase\My Drive\Rosters etc\{class_folder_name}
+        
+        path_patterns = [
+            f"{drive_letter}:\\My Drive\\Rosters etc\\{class_folder_name}",
+            f"{drive_letter}:\\Users\\{username}\\My Drive\\Rosters etc\\{class_folder_name}"
+        ]
+        
+        for class_folder_path in path_patterns:
+            if os.path.exists(class_folder_path):
+                return class_folder_path
+    
+    return None
+
+
 def find_zip_file(
     downloads_path: str, 
     specific_zip: Optional[str] = None,
@@ -57,13 +97,13 @@ def find_zip_file(
         if os.path.exists(specific_zip):
             return specific_zip, None
         else:
-            return None, make_error_response(f"Specified ZIP file not found: {specific_zip}", logs)
+            return None, make_error_response("ERR_GENERIC", error=f"Specified ZIP file not found: {specific_zip}")
 
     # Look for ZIP files in Downloads
     zip_files = glob(os.path.join(downloads_path, "*.zip"))
 
     if not zip_files:
-        return None, make_error_response("No ZIP files found in Downloads folder", logs)
+        return None, make_error_response("ERR_NO_ZIP")
     
     # If multiple ZIP files, return for user selection
     if len(zip_files) > 1:
@@ -220,9 +260,10 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path):
         assignment_name = extract_assignment_name_from_zip(zip_path)
         result.assignment_name = assignment_name
 
-        # Get configured rosters path
-        rosters_path = get_rosters_path()
-        class_folder_path = os.path.join(rosters_path, class_folder_name)
+        # Find class folder - check both G:\ and C:\ drives
+        class_folder_path = _find_class_folder(class_folder_name)
+        if not class_folder_path:
+            raise Exception(f"Class folder not found: '{class_folder_name}'. Checked G:\\ and C:\\ drives.")
         
         # Extract class code (e.g., "CA 4203") and include it in folder name
         class_code = extract_class_code(class_folder_name)
@@ -290,8 +331,10 @@ def _setup_processing_environment(
     Returns:
         Tuple of (class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder)
     """
-    rosters_path = get_rosters_path()
-    class_folder_path = os.path.join(rosters_path, class_folder_name)
+    # Find class folder - check both G:\ and C:\ drives
+    class_folder_path = _find_class_folder(class_folder_name)
+    if not class_folder_path:
+        raise Exception(f"Class folder not found: '{class_folder_name}'. Checked G:\\ and C:\\ drives.")
     
     # Extract class code (e.g., "CA 4203") and include it in folder name
     class_code = extract_class_code(class_folder_name)
@@ -386,7 +429,7 @@ def _setup_import_file_column(
     """
     Set up assignment column in Import File (for quiz processing).
     
-    Creates or renames column E to the assignment name.
+    Creates or renames column F to the assignment name.
     
     Args:
         import_df: DataFrame to update
@@ -399,12 +442,13 @@ def _setup_import_file_column(
         
         # Check if column already exists
         if column_name not in import_df.columns:
-            # Rename column E (index 4) or add new column
+            # Rename column F (index 5) or add new column
             from grading_constants import REQUIRED_COLUMNS_COUNT
             columns = list(import_df.columns)
-            if len(columns) > REQUIRED_COLUMNS_COUNT - 1:
-                old_name = columns[REQUIRED_COLUMNS_COUNT - 1]
-                columns[REQUIRED_COLUMNS_COUNT - 1] = column_name
+            # Column F is index 5 (after the 5 required columns A-E)
+            if len(columns) > REQUIRED_COLUMNS_COUNT:
+                old_name = columns[REQUIRED_COLUMNS_COUNT]
+                columns[REQUIRED_COLUMNS_COUNT] = column_name
                 import_df.columns = columns
             else:
                 import_df[column_name] = ""
@@ -434,9 +478,10 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
     result = ProcessingResult()
     
     try:
-        # Get configured rosters path
-        rosters_path = get_rosters_path()
-        class_folder_path = os.path.join(rosters_path, class_folder_name)
+        # Find class folder - check both G:\ and C:\ drives
+        class_folder_path = _find_class_folder(class_folder_name)
+        if not class_folder_path:
+            raise Exception(f"Class folder not found: '{class_folder_name}'. Checked G:\\ and C:\\ drives.")
         
         # If PDF path is provided, determine assignment name and processing folder from it
         assignment_name = None
@@ -662,9 +707,12 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         if not is_valid_zip:
             raise Exception(f"ZIP validation failed: {zip_error}")
         
-        # Get class folder path early for validation
-        rosters_path = get_rosters_path()
-        class_folder_path = os.path.join(rosters_path, class_folder_name)
+        # Get class folder path early for validation - check both G:\ and C:\
+        class_folder_path = _find_class_folder(class_folder_name)
+        
+        # Check if class folder exists
+        if not class_folder_path:
+            raise Exception(f"Class folder not found: '{class_folder_name}'. Checked G:\\ and C:\\ drives.")
         
         # STEP 2: Validate Import File structure
         from import_file_handler import validate_import_file_early
@@ -675,7 +723,7 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         # Load Import File for name validation
         import_df, import_file_path = load_import_file(class_folder_path)
         if import_df is None:
-            raise Exception("Could not load Import File.csv")
+            raise Exception(f"Could not load import file from: {class_folder_path}. Please ensure 'Import File.csv' or 'import.csv' exists in the class folder.")
         
         # STEP 3: Validate student names in ZIP match Import File
         from zip_validator import validate_student_names_match

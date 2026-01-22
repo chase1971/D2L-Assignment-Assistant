@@ -5,6 +5,7 @@ import AssignmentSelectionModal from './AssignmentSelectionModal';
 import ConfirmationModal from './ConfirmationModal';
 import ClearOptionsModal, { ClearOption } from './ClearOptionsModal';
 import ClassSetupModal from './ClassSetupModal';
+import EmailStudentsModal from './EmailStudentsModal';
 import ActionCard from './ActionCard';
 import LogTerminal from './LogTerminal';
 import NavigationBar from './NavigationBar';
@@ -26,7 +27,8 @@ import {
   getPdfsFolderPath,
   loadClasses,
   ClassData,
-  validateFolder
+  validateFolder,
+  loadStudentsForEmail as loadStudentsForEmailService
 } from '../services/quizGraderService';
 import { SERVER_POLL_INTERVAL_MS, SERVER_CHECK_TIMEOUT_MS } from './constants/ui-constants';
 import { useThemeStyles } from './hooks/useThemeStyles';
@@ -63,6 +65,36 @@ export default function Option2() {
   
   // Store confidence scores from grade extraction
   const [confidenceScores, setConfidenceScores] = useState<Array<{name: string; grade: string; confidence: number}> | null>(null);
+  
+  // Email students modal state
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailModalMode, setEmailModalMode] = useState<'all' | 'without-assignment'>('all');
+  const [emailStudents, setEmailStudents] = useState<Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>>([]);
+  
+  // Load students from import file
+  const loadStudentsForEmail = async (): Promise<Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>> => {
+    if (!selectedClass || !drive) {
+      return [];
+    }
+    
+    // Get the last processed assignment name if available
+    const assignmentName = lastProcessedAssignment && lastProcessedAssignment.className === selectedClass
+      ? lastProcessedAssignment.name
+      : null;
+    
+    try {
+      const result = await loadStudentsForEmailService(drive, selectedClass, assignmentName, addLog);
+      if (result.success && result.students) {
+        return result.students;
+      } else {
+        addLog(`❌ Error loading students: ${result.error || 'Unknown error'}`);
+        return [];
+      }
+    } catch (error) {
+      addLog(`❌ Error loading students: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return [];
+    }
+  };
   
   /**
    * Extracts class code from class folder name
@@ -320,9 +352,14 @@ export default function Option2() {
         addLog(`✅ Class loaded: ${newClass}`);
         addLog(`📂 Location: ${rosterPath}`);
         
-        // Validate folder has CSV file
+        // Validate folder exists and has CSV file
         const validation = await validateFolder(rosterPath);
-        if (!validation.hasCSV) {
+        if (!validation.success) {
+          addLog(`❌ Class folder not found: ${newClass}`);
+          if (validation.error) {
+            addLog(`   Error: ${validation.error}`);
+          }
+        } else if (!validation.hasCSV) {
           addLog(`❌ No import file found in this folder [E1051]`);
         }
         
@@ -479,7 +516,19 @@ export default function Option2() {
       if (result.success) {
         addLog('✅ Completion processing completed!');
         addLog('✅ Auto-assigned 10 points to all submissions');
-        // Note: Don't set lastProcessedAssignment for completion - it's only for quiz processing
+        
+        // Set lastProcessedAssignment for email functionality to know which assignment was processed
+        // Use the raw assignment_name (without class code) so it matches the CSV column name
+        if (result.assignment_name) {
+          // For email, we need the raw assignment name to match CSV column "Assignment Name Points Grade"
+          // Don't add class code - the CSV column doesn't have it
+          const rawAssignmentName = result.assignment_name.trim();
+          setLastProcessedAssignment({
+            name: rawAssignmentName, // Use raw name for email matching
+            className: selectedClass,
+            zipPath: zipPath
+          });
+        }
       } else {
         displayError(result.error);
       }
@@ -504,6 +553,19 @@ export default function Option2() {
       if (result.success) {
         addLog('✅ Completion processing completed!');
         addLog('✅ Auto-assigned 10 points to all submissions');
+        
+        // Set lastProcessedAssignment for email functionality to know which assignment was processed
+        // Use the raw assignment_name (without class code) so it matches the CSV column name
+        if (result.assignment_name) {
+          // For email, we need the raw assignment name to match CSV column "Assignment Name Points Grade"
+          // Don't add class code - the CSV column doesn't have it
+          const rawAssignmentName = result.assignment_name.trim();
+          setLastProcessedAssignment({
+            name: rawAssignmentName, // Use raw name for email matching
+            className: selectedClass,
+            zipPath: ''
+          });
+        }
       } else if (result.error === 'Multiple ZIP files found') {
         setZipFiles(result.zip_files || []);
         setZipSelectionMode('completion');
@@ -1199,22 +1261,38 @@ export default function Option2() {
         metalButtonStyle={metalButtonStyle}
       />
 
+      {/* Email Students Modal */}
+      <EmailStudentsModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        students={emailStudents}
+        mode={emailModalMode}
+        onEmail={(selectedStudents) => {
+          // TODO: Implement email functionality
+          addLog(`📧 Email functionality will be implemented later. Selected ${selectedStudents.length} students.`);
+          setShowEmailModal(false);
+        }}
+        isDark={isDark}
+        metalButtonClass={metalButtonClass}
+        metalButtonStyle={metalButtonStyle}
+      />
+
       {/* Main Content Grid */}
-      <div className="flex-1 overflow-auto p-4">
-        <div className="grid grid-cols-3 gap-4 h-full max-h-full">
+      <div className="flex-1 overflow-auto p-3">
+        <div className="grid grid-cols-3 gap-3 h-full max-h-full">
           {/* Left Column - Actions */}
-          <div className="space-y-4">
+          <div className="space-y-2.5">
             {/* Process Quizzes */}
             <ActionCard title="PROCESS QUIZZES" isDark={isDark}>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <button
                   onClick={handleProcessQuizzes}
                   disabled={!selectedClass || processing || processingCompletion}
                   className={`w-full rounded-lg border shadow-lg font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
                   style={{ 
                     ...metalButtonStyle(isDark), 
-                    padding: '16px 16px', 
-                    fontSize: '16px', 
+                    padding: '10px 12px', 
+                    fontSize: '14px', 
                     transition: 'all 0.15s ease',
                     ...(!selectedClass || processing || processingCompletion ? {
                       opacity: 0.5,
@@ -1253,8 +1331,8 @@ export default function Option2() {
                   className={`w-full rounded-lg border shadow-lg font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
                   style={{ 
                     ...metalButtonStyle(isDark), 
-                    padding: '16px 16px', 
-                    fontSize: '16px', 
+                    padding: '10px 12px', 
+                    fontSize: '14px', 
                     transition: 'all 0.15s ease',
                     ...(!selectedClass || processing || processingCompletion ? {
                       opacity: 0.5,
@@ -1287,14 +1365,15 @@ export default function Option2() {
                 >
                   {processingCompletion ? 'PROCESSING...' : 'PROCESS COMPLETION'}
                 </button>
-                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={dontOverride}
                     onChange={(e) => setDontOverride(e.target.checked)}
                     className="rounded"
+                    style={{ width: '14px', height: '14px' }}
                   />
-                  <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
                     Don't override grades
                   </span>
                 </label>
@@ -1309,8 +1388,8 @@ export default function Option2() {
                 className={`w-full rounded-lg border shadow-lg font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
                 style={{ 
                   ...metalButtonStyle(isDark), 
-                  padding: '16px 16px', 
-                  fontSize: '16px', 
+                  padding: '10px 12px', 
+                  fontSize: '14px', 
                   transition: 'all 0.15s ease',
                   ...(!selectedClass || extracting ? {
                     opacity: 0.5,
@@ -1348,20 +1427,20 @@ export default function Option2() {
             {/* Split PDF */}
             <ActionCard title="SPLIT PDF" isDark={isDark}>
               {/* Show current assignment being worked on */}
-              <div className={`mb-3 p-2 rounded border ${
+              <div className={`mb-2 p-1.5 rounded border ${
                 isDark ? 'bg-[#1a2942]/50 border-[#2a3952]' : 'bg-[#d0d0d4] border-gray-400'
               }`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1">
-                    <div className={`text-xs uppercase tracking-wider mb-1 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
+                    <div className={`text-xs uppercase tracking-wider mb-0.5 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
                       Current Assignment:
                     </div>
                     {lastProcessedAssignment && lastProcessedAssignment.className === selectedClass ? (
-                      <div className={`text-sm font-medium truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      <div className={`text-xs font-medium truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         📄 {lastProcessedAssignment.name}
                       </div>
                     ) : (
-                      <div className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                      <div className={`text-xs italic ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                         None
                       </div>
                     )}
@@ -1369,11 +1448,11 @@ export default function Option2() {
                   <button
                     onClick={handleSelectPdfFile}
                     disabled={!selectedClass || splitting}
-                    className={`px-3 py-1.5 text-xs rounded border font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
+                    className={`px-2 py-1 text-xs rounded border font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
                     style={{ 
                       ...metalButtonStyle(isDark), 
-                      fontSize: '11px', 
-                      padding: '6px 12px', 
+                      fontSize: '10px', 
+                      padding: '4px 8px', 
                       transition: 'all 0.15s ease',
                       ...(!selectedClass || splitting ? {
                         opacity: 0.5,
@@ -1410,7 +1489,7 @@ export default function Option2() {
                 </div>
               </div>
               
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <button
                   onClick={() => {
                     // Pass pdfPath if available (Electron mode), otherwise null (will use uploadedPdfFile in browser mode)
@@ -1421,8 +1500,8 @@ export default function Option2() {
                   className={`w-full rounded-lg border shadow-lg font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
                   style={{ 
                     ...metalButtonStyle(isDark), 
-                    padding: '16px 16px', 
-                    fontSize: '16px', 
+                    padding: '10px 12px', 
+                    fontSize: '14px', 
                     transition: 'all 0.15s ease',
                     ...(!selectedClass || splitting || !lastProcessedAssignment || lastProcessedAssignment.className !== selectedClass ? {
                       opacity: 0.5,
@@ -1512,15 +1591,15 @@ export default function Option2() {
 
             {/* Clear Data */}
             <ActionCard title="CLEAR DATA" isDark={isDark} titleColor={isDark ? 'text-red-400' : 'text-red-700'}>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={handleClearAllData}
                   disabled={!selectedClass || clearing}
                   className={`rounded-lg border-2 shadow-lg font-bold text-white ${dangerButtonClass(isDark)} disabled:cursor-not-allowed`}
                   style={{ 
                     ...dangerButtonStyle(isDark),
-                    fontSize: '18px', 
-                    padding: '12px 40px',
+                    fontSize: '14px', 
+                    padding: '8px 20px',
                     transition: 'all 0.15s ease',
                     ...(!selectedClass || clearing ? {
                       opacity: 0.5,
@@ -1555,22 +1634,131 @@ export default function Option2() {
                 </button>
                 
                 {/* Show current assignment */}
-                <div className={`flex-1 p-2 rounded border ${
+                <div className={`flex-1 p-1.5 rounded border ${
                   isDark ? 'bg-[#1a2942]/50 border-[#2a3952]' : 'bg-[#d0d0d4] border-gray-400'
                 }`}>
-                  <div className={`text-xs uppercase tracking-wider mb-1 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
+                  <div className={`text-xs uppercase tracking-wider mb-0.5 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
                     Current Assignment:
                   </div>
                   {lastProcessedAssignment && lastProcessedAssignment.className === selectedClass ? (
-                    <div className={`text-sm font-medium truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div className={`text-xs font-medium truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                       📄 {lastProcessedAssignment.name}
                     </div>
                   ) : (
-                    <div className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                    <div className={`text-xs italic ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                       None
                     </div>
                   )}
                 </div>
+              </div>
+            </ActionCard>
+
+            {/* Email Students */}
+            <ActionCard title="EMAIL STUDENTS" isDark={isDark}>
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    if (!selectedClass) return;
+                    addLog('📧 Loading students for email...');
+                    try {
+                      const students = await loadStudentsForEmail();
+                      addLog(`✅ Loaded ${students.length} students`);
+                      setEmailStudents(students);
+                      setEmailModalMode('all');
+                      setShowEmailModal(true);
+                    } catch (error) {
+                      addLog(`❌ Error loading students: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    }
+                  }}
+                  disabled={!selectedClass}
+                  className={`w-full rounded-lg border shadow-lg font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
+                  style={{ 
+                    ...metalButtonStyle(isDark), 
+                    padding: '10px 12px', 
+                    fontSize: '14px', 
+                    transition: 'all 0.15s ease',
+                    ...(!selectedClass ? {
+                      opacity: 0.5,
+                      filter: 'saturate(0.2) brightness(0.85)',
+                      pointerEvents: 'none'
+                    } : {})
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedClass) {
+                      e.currentTarget.style.transform = 'scale(1.02)';
+                      e.currentTarget.style.filter = 'brightness(1.1)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.filter = 'brightness(1)';
+                  }}
+                  onMouseDown={(e) => {
+                    if (selectedClass) {
+                      e.currentTarget.style.transform = 'translateY(2px) scale(0.98)';
+                      e.currentTarget.style.boxShadow = isDark 
+                        ? 'inset 0 2px 4px rgba(0,0,0,0.6)'
+                        : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+                    }
+                  }}
+                  onMouseUp={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.02)';
+                    e.currentTarget.style.boxShadow = '';
+                  }}
+                >
+                  EMAIL ALL
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!selectedClass) return;
+                    addLog('📧 Loading students without assignment...');
+                    try {
+                      const students = await loadStudentsForEmail();
+                      setEmailStudents(students);
+                      setEmailModalMode('without-assignment');
+                      setShowEmailModal(true);
+                    } catch (error) {
+                      addLog(`❌ Error loading students: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    }
+                  }}
+                  disabled={!selectedClass}
+                  className={`w-full rounded-lg border shadow-lg font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
+                  style={{ 
+                    ...metalButtonStyle(isDark), 
+                    padding: '10px 12px', 
+                    fontSize: '14px', 
+                    transition: 'all 0.15s ease',
+                    ...(!selectedClass ? {
+                      opacity: 0.5,
+                      filter: 'saturate(0.2) brightness(0.85)',
+                      pointerEvents: 'none'
+                    } : {})
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedClass) {
+                      e.currentTarget.style.transform = 'scale(1.02)';
+                      e.currentTarget.style.filter = 'brightness(1.1)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.filter = 'brightness(1)';
+                  }}
+                  onMouseDown={(e) => {
+                    if (selectedClass) {
+                      e.currentTarget.style.transform = 'translateY(2px) scale(0.98)';
+                      e.currentTarget.style.boxShadow = isDark 
+                        ? 'inset 0 2px 4px rgba(0,0,0,0.6)'
+                        : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+                    }
+                  }}
+                  onMouseUp={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.02)';
+                    e.currentTarget.style.boxShadow = '';
+                  }}
+                >
+                  EMAIL STUDENTS WITHOUT ASSIGNMENT
+                </button>
               </div>
             </ActionCard>
           </div>

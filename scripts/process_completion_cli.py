@@ -85,7 +85,11 @@ def main():
             # Removed verbose logging: "Completion processing completed successfully!"
         except Exception as e:
             log("EMPTY_LINE")
-            log("ERR_UNEXPECTED", error=format_error_message(e))
+            # Log the actual exception message for debugging
+            error_msg = format_error_message(e)
+            if not error_msg or error_msg.strip() == "":
+                error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log("ERR_UNEXPECTED", error=error_msg)
             log("EMPTY_LINE")
             raise
         
@@ -124,6 +128,10 @@ def main():
         # Use standardized error formatting
         from grading_processor import format_error_message
         friendly_error = format_error_message(e)
+        # If formatted error is empty, use the original exception message
+        if not friendly_error or friendly_error.strip() == "":
+            friendly_error = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+        
         log("EMPTY_LINE")
         log("ERR_UNEXPECTED", error=friendly_error)
         
