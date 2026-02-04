@@ -18,7 +18,7 @@ from import_file_handler import load_import_file, update_import_file
 from pdf_operations import create_combined_pdf, split_combined_pdf
 from submission_processor import process_submissions
 from file_utils import open_file_with_default_app
-from user_messages import log, format_msg
+from user_messages import log, log_raw, format_msg
 from grading_helpers import (
     make_error_response,
     extract_assignment_name_from_zip,
@@ -37,7 +37,7 @@ from grading_helpers import (
 def _find_class_folder(class_folder_name: str) -> Optional[str]:
     """
     Find the class folder by checking multiple possible locations.
-    Checks both G:\ and C:\ drives, similar to how import files are found.
+    Checks both G:\\ and C:\\ drives, similar to how import files are found.
     
     Args:
         class_folder_name: Name of the class folder (e.g., 'FM 4101 TTH 8-920')
@@ -210,9 +210,21 @@ def validate_zip_structure(zip_path: str) -> bool:
 
 def extract_zip_file(zip_path: str, extraction_folder: str) -> int:
     """Extract ZIP file to the grade processing folder"""
+    from user_messages import log_raw
+    import platform
+    
     # Validate ZIP structure BEFORE extraction
+    log_raw(f"📦 Validating ZIP structure...", "INFO")
     if not validate_zip_structure(zip_path):
         raise Exception("Zip file does not contain student assignments")
+    
+    log_raw(f"✓ ZIP is valid", "INFO")
+    
+    # Use extended-length path prefix on Windows to support long paths
+    if platform.system() == "Windows" and not extraction_folder.startswith("\\\\?\\"):
+        extraction_folder = "\\\\?\\" + os.path.abspath(extraction_folder)
+    
+    log_raw(f"📂 Extracting to: {extraction_folder.replace('\\\\?\\', '')}", "INFO")
     
     # Create the extraction folder if it doesn't exist (DON'T delete existing)
     os.makedirs(extraction_folder, exist_ok=True)
@@ -227,22 +239,61 @@ def extract_zip_file(zip_path: str, extraction_folder: str) -> int:
                 with zf.open('index.html') as index_file:
                     with open(index_file_path, 'wb') as f:
                         f.write(index_file.read())
-            # Extract all files
-            zf.extractall(extraction_folder)
+            
+            log_raw(f"⏳ Extracting {len(zf.namelist())} files...", "INFO")
+            
+            # Extract files manually to handle long paths on Windows
+            if platform.system() == "Windows":
+                for member in zf.namelist():
+                    # Normalize path separators for Windows (ZIP uses forward slashes)
+                    normalized_member = member.replace('/', '\\')
+                    
+                    # Get the target path with extended-length prefix
+                    target_path = os.path.join(extraction_folder, normalized_member)
+                    
+                    # Create directories if needed
+                    if member.endswith('/'):
+                        os.makedirs(target_path, exist_ok=True)
+                    else:
+                        # Create parent directory
+                        parent_dir = os.path.dirname(target_path)
+                        os.makedirs(parent_dir, exist_ok=True)
+                        
+                        # Extract the file
+                        with zf.open(member) as source, open(target_path, 'wb') as target:
+                            target.write(source.read())
+            else:
+                # On non-Windows, use standard extraction
+                zf.extractall(extraction_folder)
+                
+            log_raw(f"✓ Extraction complete", "INFO")
+            
     except zipfile.BadZipFile:
         raise Exception("This file can't be opened")
     except zipfile.LargeZipFile:
         raise Exception("This file can't be opened")
     except Exception as e:
-        if "BadZipFile" in str(type(e)) or "can't be opened" in str(e).lower():
+        error_msg = str(e)
+        log_raw(f"❌ Extraction error: {error_msg}", "ERROR")
+        
+        # Check if it's a path length issue
+        if "No such file or directory" in error_msg or "Errno 2" in error_msg:
+            log_raw("💡 This may be due to Windows path length limits", "WARNING")
+            log_raw("💡 Try using a shorter path or enabling long path support in Windows", "WARNING")
+        
+        if "BadZipFile" in str(type(e)) or "can't be opened" in error_msg.lower():
             raise Exception("This file can't be opened")
         raise
     
+    # Remove extended-length prefix for counting
+    normal_extraction_folder = extraction_folder.replace("\\\\?\\", "")
+    
     # Count extracted folders (exclude PDFs folder if it exists)
-    folder_count = len([d for d in os.listdir(extraction_folder) 
-                       if os.path.isdir(os.path.join(extraction_folder, d)) 
+    folder_count = len([d for d in os.listdir(normal_extraction_folder) 
+                       if os.path.isdir(os.path.join(normal_extraction_folder, d)) 
                        and d != "PDFs"])
     
+    log_raw(f"✓ Found {folder_count} student folders", "INFO")
     return folder_count
 
 
@@ -286,7 +337,7 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path):
         # Step 2: Load Import File (skip validation for process quizzes)
         import_df, import_file_path = load_import_file(class_folder_path, skip_validation=True)
         if import_df is None:
-            raise Exception("Could not load Import File.csv")
+            raise Exception("Could not load import file. Please ensure 'Import File.csv' or 'import.csv' exists in the class folder.")
         
         result.import_file_path = import_file_path
         result.total_students = len(import_df)
@@ -478,10 +529,13 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
     result = ProcessingResult()
     
     try:
+        log_raw("🔍 Locating class folder...", "INFO")
         # Find class folder - check both G:\ and C:\ drives
         class_folder_path = _find_class_folder(class_folder_name)
         if not class_folder_path:
             raise Exception(f"Class folder not found: '{class_folder_name}'. Checked G:\\ and C:\\ drives.")
+        
+        log_raw("✓ Found class folder", "INFO")
         
         # If PDF path is provided, determine assignment name and processing folder from it
         assignment_name = None
@@ -491,30 +545,54 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
         combined_pdf_path = None
         
         if pdf_path and os.path.exists(pdf_path):
+            log_raw("📄 Using selected PDF...", "INFO")
             combined_pdf_path = pdf_path
             # Extract assignment name from PDF filename
             # Format: "Assignment Name CLASS_CODE combined PDF.pdf"
             pdf_filename = os.path.basename(pdf_path)
-            # Remove "combined PDF.pdf" suffix and class code
-            match = re.match(r'(.+?)\s+(?:[A-Z]{2}\s+\d{4}\s+)?combined PDF\.pdf$', pdf_filename, re.IGNORECASE)
-            if match:
-                assignment_name = match.group(1).strip()
+            log_raw(f"   PDF filename: {pdf_filename}", "INFO")
+            
+            # Remove "combined PDF.pdf" suffix and class code at the end
+            # E.g., "Quiz 1 (3.1 - 3.4) H 8-920 combined PDF.pdf" -> "Quiz 1 (3.1 - 3.4)"
+            # E.g., "Quiz 1 (3.1 - 3.4) 30-1050 combined PDF.pdf" -> "Quiz 1 (3.1 - 3.4)"
+            assignment_name = pdf_filename.replace(' combined PDF.pdf', '').replace('combined PDF.pdf', '')
+            log_raw(f"   After removing PDF suffix: {assignment_name}", "INFO")
+            
+            # Remove class code pattern at the end
+            # Pattern 1: letters + space + numbers-numbers (e.g., "H 8-920", "TTH 11-1220")
+            # Pattern 2: just numbers-numbers (e.g., "30-1050")
+            assignment_name = re.sub(r'\s+[A-Z]+\s+\d+-\d+\s*$', '', assignment_name, flags=re.IGNORECASE).strip()
+            assignment_name = re.sub(r'\s+\d+-\d+\s*$', '', assignment_name).strip()
+            log_raw(f"   Extracted assignment name: {assignment_name}", "INFO")
 
-            # Find the processing folder for this assignment
-            # Try new format first (with class code), then old format
-            if assignment_name:
-                class_code = extract_class_code(class_folder_name)
-                if class_code:
-                    # Try new format: "grade processing CA 4203 Quiz 4"
-                    processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
-                    if not os.path.exists(processing_folder):
-                        # Fallback to old format: "grade processing Quiz 4"
-                        processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+            log_raw(f"🔍 Looking for folder containing: {assignment_name}", "INFO")
+            # Find processing folder that contains this assignment name
+            # Search for any folder matching "grade processing*[assignment_name]*"
+            processing_folder = None
+            found_folders = []
+            
+            for folder_name in os.listdir(class_folder_path):
+                folder_path = os.path.join(class_folder_path, folder_name)
+                if os.path.isdir(folder_path):
+                    # Check if folder name contains "grade processing"
+                    if 'grade processing' in folder_name.lower():
+                        found_folders.append(folder_name)
+                        # Check if it also contains the assignment name
+                        if assignment_name.lower() in folder_name.lower():
+                            processing_folder = folder_path
+                            break
+            
+            # If no match found, log what we found
+            if not processing_folder:
+                if found_folders:
+                    log_raw(f"❌ No matching folder found. Available grade processing folders:", "ERROR")
+                    for folder in found_folders[:5]:  # Show first 5
+                        log_raw(f"   - {folder}", "ERROR")
                 else:
-                    # No class code, use old format
-                    processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
+                    log_raw(f"❌ No grade processing folders found in class folder", "ERROR")
 
         else:
+            log_raw("🔍 Finding most recent processing folder...", "INFO")
             # No PDF path provided - find the most recent processing folder
             # Pattern matches both: "grade processing [CLASS_CODE] [ASSIGNMENT]" and "grade processing [ASSIGNMENT]"
             pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
@@ -538,6 +616,8 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
         if not processing_folder or not os.path.exists(processing_folder):
             raise Exception(f"Processing folder not found: {processing_folder if processing_folder else 'Unknown'}")
         
+        log_raw(f"✓ Found: {os.path.basename(processing_folder)}", "INFO")
+        
         unzipped_folder = os.path.join(processing_folder, "unzipped folders")
         pdf_output_folder = os.path.join(processing_folder, "PDFs")
         
@@ -546,8 +626,11 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
             log("SPLIT_NO_UNZIPPED")
             raise Exception("No unzipped folders found")
         
+        log_raw("✓ Found unzipped folders", "INFO")
+        
         # Find combined PDF if not already provided
         if not combined_pdf_path:
+            log_raw("🔍 Finding combined PDF...", "INFO")
             if os.path.exists(pdf_output_folder):
                 pdf_files = [f for f in os.listdir(pdf_output_folder) if f.endswith('.pdf') and 'combined PDF' in f]
                 if pdf_files:
@@ -562,10 +645,15 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
             else:
                 raise Exception(f"Combined PDF not found in: {pdf_output_folder}")
         
+        log_raw(f"✓ PDF: {os.path.basename(combined_pdf_path)}", "INFO")
+        log_raw("📖 Loading import file...", "INFO")
+        
         # Load Import File (skip validation for reverse process - we only need it for name mapping)
         import_df, import_file_path = load_import_file(class_folder_path, skip_validation=True)
         if import_df is None:
-            raise Exception("Could not load Import File.csv")
+            raise Exception("Could not load import file. Please ensure 'Import File.csv' or 'import.csv' exists in the class folder.")
+        
+        log_raw(f"✓ Import file loaded ({len(import_df)} students)", "INFO")
         
         result.import_file_path = import_file_path
         result.total_students = len(import_df)
@@ -573,6 +661,7 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
         result.processing_folder = processing_folder  # Store for ZIP creation
         result.unzipped_folder = unzipped_folder  # Store for ZIP creation
         
+        log_raw("✂️ Splitting PDF into individual files...", "INFO")
         # Split the combined PDF back into individual PDFs
         # The split_combined_pdf should place files in unzipped_folder (student folders)
         students_processed = split_combined_pdf(combined_pdf_path, import_df, unzipped_folder)
@@ -632,7 +721,7 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
         # Load Import File (skip validation for process quizzes)
         import_df, import_file_path = load_import_file(class_folder_path, skip_validation=True)
         if import_df is None:
-            raise Exception("Could not load Import File.csv")
+            raise Exception("Could not load import file. Please ensure 'Import File.csv' or 'import.csv' exists in the class folder.")
         
         result.import_file_path = import_file_path
         result.total_students = len(import_df)
@@ -775,6 +864,36 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
             grades_map=None,  # No OCR grades - auto-assign 10 points
             dont_override=dont_override
         )
+        
+        # Log students who didn't do the assignment
+        if no_submission:
+            log("EMPTY_LINE")
+            log("COMPLETION_NO_SUBMISSION_HEADER")
+            for user in sorted(no_submission):
+                student_name = get_student_display_name(import_df, user)
+                log("COMPLETION_NO_SUBMISSION_ITEM", name=student_name)
+        
+        # Calculate and report page count mode for completion assignments
+        if page_counts:
+            from collections import Counter
+            page_count_freq = Counter(page_counts.values())
+            mode_pages = page_count_freq.most_common(1)[0][0]
+            mode_count = page_count_freq.most_common(1)[0][1]
+            
+            log("EMPTY_LINE")
+            log("COMPLETION_PAGE_MODE", mode=mode_pages, count=mode_count, total=len(page_counts))
+            
+            # Report students who didn't submit the mode value
+            different_page_students = []
+            for pdf_path, student_name in name_map.items():
+                if student_name in page_counts and page_counts[student_name] != mode_pages:
+                    different_page_students.append((student_name, page_counts[student_name]))
+            
+            if different_page_students:
+                log("EMPTY_LINE")
+                log("COMPLETION_DIFFERENT_PAGES_HEADER")
+                for student_name, page_count in sorted(different_page_students):
+                    log("COMPLETION_DIFFERENT_PAGES_ITEM", name=student_name, pages=page_count, mode=mode_pages)
         
         # Store results
         result.submitted = [name_map[pdf] for pdf in pdf_paths]

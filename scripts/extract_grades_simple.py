@@ -142,42 +142,64 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
     for i, img in enumerate(pages):
         w, h = img.size
         
-        # Extract watermark from PDF text layer
+        # Extract watermark from PDF text layer OR use OCR as fallback
         # Watermarks follow the pattern: "Name (X of Y)" and are placed in top-right corner
-        # We should ONLY extract text matching this watermark pattern, ignoring all other text
         text_top = ""
+        
+        # First, try to extract from PDF text layer
         if pdf_reader and i < len(pdf_reader.pages):
             try:
                 import re
-                # Extract all text from page
                 all_text = pdf_reader.pages[i].extract_text()
                 
-                # Look ONLY for watermark pattern "Name (X of Y)" - this is the watermark format
-                # This pattern is unique to watermarks and won't match instructional text
+                if len(results) < 3 and all_text and all_text.strip():
+                    log(f"   🔍 DEBUG Page {i+1}: Found text in PDF layer")
+                
                 watermark_pattern = r'(.+?)\s*\(\s*(\d+)\s+of\s+(\d+)\s*\)'
-                watermark_match = re.search(watermark_pattern, all_text, re.IGNORECASE)
+                watermark_match = re.search(watermark_pattern, all_text, re.IGNORECASE) if all_text else None
                 
                 if watermark_match:
-                    # Extract ONLY the line containing the watermark pattern
-                    # This ensures we only get the watermark text, not instructional text
                     lines = all_text.split('\n')
                     for line in lines:
                         if re.search(r'\(\s*\d+\s+of\s+\d+\s*\)', line):
                             text_top = line.strip()
+                            if len(results) < 3:
+                                log(f"   🔍 DEBUG: Found watermark in PDF text: '{text_top}'")
                             break
                     
-                    # If we found the pattern but couldn't extract the line, use the matched text
                     if not text_top and watermark_match:
                         text_top = watermark_match.group(0).strip()
-                else:
-                    # No watermark pattern found - this might not be a watermarked page
-                    # Log this for debugging
-                    if len(results) < 3:
-                        log(f"   🔍 DEBUG: No watermark pattern found on page {i+1}")
             except Exception as e:
-                # If extraction fails, log but continue
                 if len(results) < 3:
-                    log(f"   🔍 DEBUG: Error extracting watermark: {e}")
+                    log(f"   🔍 DEBUG: Error extracting text from PDF: {e}")
+                pass
+        
+        # If no watermark found in PDF text layer, try OCR on the image
+        if not text_top:
+            if len(results) < 3:
+                log(f"   🔍 DEBUG Page {i+1}: No text in PDF layer, using OCR on watermark region...")
+            
+            try:
+                # Crop the top-right corner where watermarks are typically placed
+                watermark_left = int(w * 0.55)   # Right half of page
+                watermark_right = int(w * 0.98)  # Near right edge
+                watermark_top = int(h * 0.00)    # Top of page
+                watermark_bottom = int(h * 0.08) # Top 8% of page
+                watermark_img = img.crop((watermark_left, watermark_top, watermark_right, watermark_bottom))
+                
+                # Use Google Vision OCR on watermark
+                watermark_text_ocr, _ = extract_text_google_vision(watermark_img, return_confidence=True)
+                
+                if watermark_text_ocr:
+                    text_top = watermark_text_ocr.strip()
+                    if len(results) < 3:
+                        log(f"   🔍 DEBUG: OCR extracted watermark: '{text_top}'")
+                else:
+                    if len(results) < 3:
+                        log(f"   🔍 DEBUG: OCR failed to extract watermark")
+            except Exception as e:
+                if len(results) < 3:
+                    log(f"   🔍 DEBUG: Error using OCR on watermark: {e}")
                 pass
         
         # Check if first page
@@ -226,17 +248,29 @@ def extract_grades(pdf_path, log=lambda msg: print(msg), debug_images_folder=Non
         # OCR
         grade_text, confidence = extract_text_google_vision(grade_img_processed, return_confidence=True)
         
+        # Debug: Log what OCR returned for first few students
+        if len(results) < 3:
+            log(f"   🔍 DEBUG: Google Vision returned: '{grade_text}' (confidence: {confidence})")
+        
         if not grade_text and TESSERACT_AVAILABLE:
             try:
                 custom_config = r'--psm 6 --oem 3 -c tessedit_char_whitelist=0123456789./'
                 grade_text = pytesseract.image_to_string(grade_img_processed, config=custom_config).strip()
                 confidence = 0.5  # Tesseract doesn't provide confidence, assume medium
-            except Exception:
+                if len(results) < 3:
+                    log(f"   🔍 DEBUG: Tesseract returned: '{grade_text}'")
+            except Exception as e:
+                if len(results) < 3:
+                    log(f"   🔍 DEBUG: Tesseract failed: {e}")
                 grade_text = None
                 confidence = 0.0
         
         # Extract grade
         grade = extract_grade_from_text(grade_text or "")
+        
+        # Log when we successfully find a student (shows progress)
+        if name and "(1 of" in text_top:
+            log(f"   ✓ Processing: {name}")
         
         # Validate name - reject if it looks like instructions or gibberish
         if name:

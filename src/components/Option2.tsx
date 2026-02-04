@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, Loader2 } from 'lucide-react';
 import ZipSelectionModal from './ZipSelectionModal';
 import AssignmentSelectionModal from './AssignmentSelectionModal';
 import ConfirmationModal from './ConfirmationModal';
@@ -150,6 +150,10 @@ export default function Option2() {
   
   // Store uploaded PDF file (for browser mode)
   const [uploadedPdfFile, setUploadedPdfFile] = useState(null);
+  // Store uploaded PDF file for grade extraction (for browser mode)
+  const [uploadedPdfFileForExtraction, setUploadedPdfFileForExtraction] = useState(null);
+  // Store selected PDF path for grade extraction (for Electron mode)
+  const [selectedPdfPathForExtraction, setSelectedPdfPathForExtraction] = useState<string | null>(null);
   
   // Store PDFs folder paths for selected class
   const [pdfsFolderPath, setPdfsFolderPath] = useState(null);
@@ -337,6 +341,8 @@ export default function Option2() {
     setSelectedClass(newClass);
     setPdfsFolderPath(null); // Clear previous path
     setUploadedPdfFile(null); // Clear uploaded file when class changes
+    setUploadedPdfFileForExtraction(null); // Clear extraction PDF file
+    setSelectedPdfPathForExtraction(null); // Clear extraction PDF path
     
     // Clear last processed assignment when class changes (it should only be set after processing quizzes)
     setLastProcessedAssignment(null);
@@ -621,13 +627,24 @@ export default function Option2() {
     addLog('🔬 Starting grade extraction...');
     
     try {
-      const result = await extractGrades(drive, selectedClass, addLog);
+      const result = await extractGrades(drive, selectedClass, selectedPdfPathForExtraction || undefined, addLog);
       
       // Store confidence scores if available
       if (result.success && result.confidenceScores) {
         setConfidenceScores(result.confidenceScores);
       } else {
         setConfidenceScores(null);
+      }
+      
+      // Set lastProcessedAssignment if we have assignment info from the result
+      if (result.success && result.assignmentName) {
+        // Format as "{assignment_name} {class_code}" (without "combined PDF")
+        const displayName = formatAssignmentDisplayName(result.assignmentName, selectedClass);
+        setLastProcessedAssignment({
+          name: displayName,
+          className: selectedClass,
+          zipPath: result.pdfPath || selectedPdfPathForExtraction || ''
+        });
       }
       
       // Note: Success message is already printed by the backend
@@ -644,6 +661,82 @@ export default function Option2() {
       displayError(errorMsg);
     } finally {
       setExtracting(false);
+    }
+  };
+
+  // Handle PDF file selection for grade extraction
+  const handleSelectPdfFileForExtraction = async () => {
+    if (!requireClass()) return;
+
+    try {
+      // Use Electron dialog if available (for file path)
+      if ((window as any).electronAPI?.showOpenDialog) {
+        // Fetch path for Electron dialog
+        let pathInfo = pdfsFolderPath;
+        if (!pathInfo) {
+          pathInfo = await getPdfsFolderPath(drive, selectedClass);
+          if (pathInfo) {
+            setPdfsFolderPath(pathInfo);
+          }
+        }
+        
+        const dialogOptions: any = {
+          filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+          properties: ['openFile']
+        };
+        
+        if (pathInfo && pathInfo.existingPath) {
+          dialogOptions.defaultPath = pathInfo.existingPath;
+        }
+        
+        const result = await (window as any).electronAPI.showOpenDialog(dialogOptions);
+        
+        if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+          const filePath = result.filePaths[0];
+          const fileName = filePath.split(/[/\\]/).pop() || '';
+          addLog(`📄 Selected PDF for extraction: ${fileName}`);
+          
+          // Store the path for extraction
+          setSelectedPdfPathForExtraction(filePath);
+          
+          // Extract assignment name from filename
+          const rawAssignmentName = fileName.replace(/\.pdf$/i, '').trim();
+          const displayName = formatAssignmentDisplayName(rawAssignmentName, selectedClass);
+          
+          // Set as current assignment (don't run extraction yet)
+          setLastProcessedAssignment({
+            name: displayName,
+            className: selectedClass,
+            zipPath: filePath
+          });
+          
+          addLog(`✅ PDF set for extraction. Click "EXTRACT GRADES" to process.`);
+        }
+      } else {
+        // Browser mode: Use file upload (works in any browser)
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.pdf';
+        input.onchange = async (e: any) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            addLog(`📄 Selected PDF for extraction: ${file.name}`);
+            // Store the file for upload during extraction
+            setUploadedPdfFileForExtraction(file);
+            const rawAssignmentName = file.name.replace(/\.pdf$/i, '').trim();
+            const displayName = formatAssignmentDisplayName(rawAssignmentName, selectedClass);
+            setLastProcessedAssignment({
+              name: displayName,
+              className: selectedClass,
+              zipPath: ''
+            });
+            addLog(`✅ PDF set for extraction. Click "EXTRACT GRADES" to process.`);
+          }
+        };
+        input.click();
+      }
+    } catch (error) {
+      addLog(`❌ Error selecting PDF: ${error}`);
     }
   };
 
@@ -1323,7 +1416,12 @@ export default function Option2() {
                     e.currentTarget.style.boxShadow = '';
                   }}
                 >
-                  {processing ? 'PROCESSING...' : 'PROCESS QUIZZES'}
+                  {processing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      PROCESSING...
+                    </span>
+                  ) : 'PROCESS QUIZZES'}
                 </button>
                 <button
                   onClick={handleProcessCompletion}
@@ -1382,6 +1480,69 @@ export default function Option2() {
 
             {/* Extract Grades */}
             <ActionCard title="EXTRACT GRADES" isDark={isDark}>
+              {/* Show current assignment being worked on */}
+              <div className={`mb-2 p-1.5 rounded border ${
+                isDark ? 'bg-[#1a2942]/50 border-[#2a3952]' : 'bg-[#d0d0d4] border-gray-400'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1">
+                    <div className={`text-xs uppercase tracking-wider mb-0.5 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
+                      Current Assignment:
+                    </div>
+                    {lastProcessedAssignment && lastProcessedAssignment.className === selectedClass ? (
+                      <div className={`text-xs font-medium truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        📄 {lastProcessedAssignment.name}
+                      </div>
+                    ) : (
+                      <div className={`text-xs italic ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                        None
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleSelectPdfFileForExtraction}
+                    disabled={!selectedClass || extracting}
+                    className={`px-2 py-1 text-xs rounded border font-medium ${metalButtonClass(isDark)} disabled:cursor-not-allowed`}
+                    style={{ 
+                      ...metalButtonStyle(isDark), 
+                      fontSize: '10px', 
+                      padding: '4px 8px', 
+                      transition: 'all 0.15s ease',
+                      ...(!selectedClass || extracting ? {
+                        opacity: 0.5,
+                        filter: 'saturate(0.2) brightness(0.85)',
+                        pointerEvents: 'none'
+                      } : {})
+                    }}
+                    title="Select a PDF file to extract grades from"
+                    onMouseEnter={(e) => {
+                      if (!extracting && selectedClass) {
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.filter = 'brightness(1.1)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                      e.currentTarget.style.filter = 'brightness(1)';
+                    }}
+                    onMouseDown={(e) => {
+                      if (!extracting && selectedClass) {
+                        e.currentTarget.style.transform = 'translateY(2px) scale(0.98)';
+                        e.currentTarget.style.boxShadow = isDark 
+                          ? 'inset 0 2px 4px rgba(0,0,0,0.6)'
+                          : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+                      }
+                    }}
+                    onMouseUp={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.05)';
+                      e.currentTarget.style.boxShadow = '';
+                    }}
+                  >
+                    📄 Select PDF
+                  </button>
+                </div>
+              </div>
+              
               <button
                 onClick={handleExtractGrades}
                 disabled={!selectedClass || extracting}
@@ -1420,7 +1581,12 @@ export default function Option2() {
                   e.currentTarget.style.boxShadow = '';
                 }}
               >
-                {extracting ? 'EXTRACTING...' : 'EXTRACT GRADES'}
+                {extracting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    EXTRACTING...
+                  </span>
+                ) : 'EXTRACT GRADES'}
               </button>
             </ActionCard>
 
@@ -1533,7 +1699,12 @@ export default function Option2() {
                     e.currentTarget.style.boxShadow = '';
                   }}
                 >
-                  {splitting ? 'PROCESSING...' : 'SPLIT PDF AND REZIP'}
+                  {splitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      PROCESSING...
+                    </span>
+                  ) : 'SPLIT PDF AND REZIP'}
                 </button>
                 
                 <button
@@ -1768,6 +1939,7 @@ export default function Option2() {
             logs={logs}
             isDark={isDark}
             addLog={addLog}
+            clearLogs={() => setLogs([])}
             confidenceScores={confidenceScores}
             drive={drive}
             selectedClass={selectedClass}

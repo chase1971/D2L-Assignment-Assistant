@@ -23,7 +23,7 @@ from typing import Dict, Any, List, Tuple
 from config_reader import get_rosters_path
 from extract_grades_simple import extract_grades, create_first_pages_pdf
 from name_matching import names_match_fuzzy
-from import_file_handler import validate_import_file_early, validate_required_columns
+from import_file_handler import validate_import_file_early, validate_required_columns, _find_import_file
 from grading_constants import REQUIRED_COLUMNS_COUNT, END_OF_LINE_COLUMN_INDEX, CONFIDENCE_HIGH, CONFIDENCE_MEDIUM
 from file_utils import open_file_with_default_app
 from grading_helpers import format_error_message
@@ -451,27 +451,28 @@ def main() -> None:
     
     Workflow:
     1. Validates class folder and import file
-    2. Finds most recent combined PDF
+    2. Finds most recent combined PDF (or uses provided pdfPath)
     3. Extracts grades using OCR
     4. Matches grades to roster students
     5. Updates Import File.csv with grades
     6. Opens Excel and first pages PDF for review
     
     Usage:
-        python extract_grades_cli.py <drive> <className>
+        python extract_grades_cli.py <drive> <className> [pdfPath]
     
     Output:
         Prints extraction results to stdout, JSON error responses to stdout on failure
     """
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         print(json.dumps({
             "success": False,
-            "error": "Usage: python extract_grades_cli_fixed.py <drive> <className>"
+            "error": "Usage: python extract_grades_cli_fixed.py <drive> <className> [pdfPath]"
         }))
         sys.exit(1)
     
     drive = sys.argv[1]
     class_name = sys.argv[2]
+    pdf_path_override = sys.argv[3] if len(sys.argv) > 3 else None
     
     try:
         # Get configured rosters path
@@ -497,44 +498,86 @@ def main() -> None:
         # Print starting message after validation passes
         log("GRADES_STARTING")
         
-        # Find the most recent "grade processing [Assignment]" folder
-        import re
-        pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
-        processing_folders = []
-        
-        for folder_name in os.listdir(class_folder):
-            folder_path = os.path.join(class_folder, folder_name)
-            if os.path.isdir(folder_path):
-                match = pattern.match(folder_name)
-                if match:
-                    processing_folders.append(folder_path)
-        
-        if not processing_folders:
-            raise Exception("No grade processing folders found for this class")
-        
-        # Sort by modification time (newest first) and use the most recent
-        processing_folders.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-        grade_processing_folder = processing_folders[0]
-        pdfs_folder = os.path.join(grade_processing_folder, "PDFs")
-        
-        # Find the most recent PDF in the PDFs folder (assignment-named PDFs)
+        # Use provided PDF path if available, otherwise find the most recent one
         combined_pdf_path = None
-        if os.path.exists(pdfs_folder):
-            pdf_files = [f for f in os.listdir(pdfs_folder) if f.endswith('.pdf') and 'combined PDF' in f]
-            if pdf_files:
-                # Sort by modification time (newest first)
-                pdf_files.sort(key=lambda f: os.path.getmtime(os.path.join(pdfs_folder, f)), reverse=True)
-                combined_pdf_path = os.path.join(pdfs_folder, pdf_files[0])
+        grade_processing_folder = None
+        assignment_name_from_pdf = None
         
-        if not combined_pdf_path or not os.path.exists(combined_pdf_path):
-            log("GRADES_PDF_NOT_FOUND")
-            raise Exception("Combined PDF not found")
+        if pdf_path_override and os.path.exists(pdf_path_override):
+            # Use the provided PDF path
+            combined_pdf_path = pdf_path_override
+            log(f"📄 Using selected PDF: {os.path.basename(combined_pdf_path)}")
+            
+            # Try to find the grade processing folder from the PDF path
+            # PDF should be in: .../grade processing [assignment]/PDFs/[filename].pdf
+            pdf_dir = os.path.dirname(combined_pdf_path)
+            if os.path.basename(pdf_dir) == "PDFs":
+                grade_processing_folder = os.path.dirname(pdf_dir)
+            else:
+                # PDF might be directly in grade processing folder
+                grade_processing_folder = pdf_dir
+            
+            # Extract assignment name from the grade processing folder name
+            # Just extract everything after "grade processing " and before/without the class code
+            folder_name = os.path.basename(grade_processing_folder)
+            import re
+            
+            # Remove "grade processing " prefix
+            if folder_name.lower().startswith('grade processing '):
+                assignment_with_code = folder_name[len('grade processing '):]
+                # Remove class code at the beginning if present (e.g., "H 8-920 " or "TTH 11-1220 ")
+                assignment_name_from_pdf = re.sub(r'^[A-Z]+\s+\d+-\d+\s+', '', assignment_with_code, flags=re.IGNORECASE).strip()
+            else:
+                # Fallback: extract from PDF filename
+                pdf_basename = os.path.basename(combined_pdf_path)
+                assignment_name_from_pdf = pdf_basename.replace(' combined PDF.pdf', '').replace('combined PDF.pdf', '')
+                # Remove class code at the end
+                assignment_name_from_pdf = re.sub(r'\s+[A-Z]+\s+\d+-\d+\s*$', '', assignment_name_from_pdf, flags=re.IGNORECASE).strip()
+        else:
+            # Find the most recent "grade processing [Assignment]" folder
+            import re
+            pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
+            processing_folders = []
+            
+            for folder_name in os.listdir(class_folder):
+                folder_path = os.path.join(class_folder, folder_name)
+                if os.path.isdir(folder_path):
+                    match = pattern.match(folder_name)
+                    if match:
+                        processing_folders.append(folder_path)
+            
+            if not processing_folders:
+                raise Exception("No grade processing folders found for this class")
+            
+            # Sort by modification time (newest first) and use the most recent
+            processing_folders.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+            grade_processing_folder = processing_folders[0]
+            pdfs_folder = os.path.join(grade_processing_folder, "PDFs")
+            
+            # Find the most recent PDF in the PDFs folder (assignment-named PDFs)
+            # Exclude _GRADES_ONLY PDFs since those are generated versions
+            if os.path.exists(pdfs_folder):
+                pdf_files = [f for f in os.listdir(pdfs_folder) 
+                            if f.endswith('.pdf') 
+                            and 'combined PDF' in f 
+                            and '_GRADES_ONLY' not in f]
+                if pdf_files:
+                    # Sort by modification time (newest first)
+                    pdf_files.sort(key=lambda f: os.path.getmtime(os.path.join(pdfs_folder, f)), reverse=True)
+                    combined_pdf_path = os.path.join(pdfs_folder, pdf_files[0])
+                    # Extract assignment name from PDF filename
+                    assignment_name_from_pdf = pdf_files[0].replace('.pdf', '').replace(' combined PDF', '').strip()
+            
+            if not combined_pdf_path or not os.path.exists(combined_pdf_path):
+                log("GRADES_PDF_NOT_FOUND")
+                raise Exception("Combined PDF not found")
         
         # Load CSV BEFORE extraction so we can pass roster names for fuzzy matching
-        import_file_path = os.path.join(class_folder, "Import File.csv")
-        if not os.path.exists(import_file_path):
+        # Check for both "Import File.csv" and "import.csv"
+        import_file_path = _find_import_file(class_folder)
+        if not import_file_path or not os.path.exists(import_file_path):
             log("GRADES_IMPORT_NOT_FOUND")
-            raise Exception("Import file not found")
+            raise Exception("Import file not found. Please ensure 'Import File.csv' or 'import.csv' exists in the class folder.")
         
         df = pd.read_csv(import_file_path)
         
@@ -606,8 +649,13 @@ def main() -> None:
                 except Exception:
                     pass
         
+        # Create debug images folder for troubleshooting
+        debug_images_folder = os.path.join(grade_processing_folder, "debug_grade_crops")
+        if not os.path.exists(debug_images_folder):
+            os.makedirs(debug_images_folder)
+        
         # Pass roster names to extract_grades for fuzzy matching during extraction
-        grades_result = extract_grades(combined_pdf_path, log_callback, roster_names=roster_names)
+        grades_result = extract_grades(combined_pdf_path, log_callback, debug_images_folder, roster_names=roster_names)
         
         # Initialize error tracking lists BEFORE first use
         extraction_errors = []
@@ -638,16 +686,34 @@ def main() -> None:
         try:
             # Open Excel file
             if os.path.exists(import_file_path):
+                log(f"📂 Opening import file...")
                 open_file_with_default_app(import_file_path)
             
             # Also open the first pages PDF if it exists
             first_pages_pdf = os.path.join(grade_processing_folder, "PDFs", "1combinedpdf_GRADES_ONLY.pdf")
             if not os.path.exists(first_pages_pdf):
                 # Try to create it if it doesn't exist
+                log(f"📄 Creating first pages PDF...")
                 first_pages_pdf = create_first_pages_pdf(combined_pdf_path, lambda msg: None)
             
             if first_pages_pdf and os.path.exists(first_pages_pdf):
+                log(f"📄 Opening grades PDF...")
                 open_file_with_default_app(first_pages_pdf)
+                
+                # Try to arrange windows side-by-side (Windows only)
+                try:
+                    from file_utils import arrange_windows_side_by_side
+                    # Wait briefly and arrange - look for CSV/Excel and PDF windows
+                    csv_filename = os.path.basename(import_file_path)
+                    pdf_filename = os.path.basename(first_pages_pdf)
+                    log(f"🖥️ Arranging windows side-by-side...")
+                    if arrange_windows_side_by_side([csv_filename, pdf_filename], delay=1.5):
+                        log(f"✓ Windows arranged")
+                    else:
+                        log(f"⚠️ Could not arrange windows (they may still be open)")
+                except Exception as e:
+                    log(f"⚠️ Window arrangement unavailable: {e}")
+                    pass  # Silent fail - not critical
         except Exception as e:
             log("DEV_ERROR_OPEN_EXTRACTED_FILES", error=str(e))
             extraction_errors.append(f"⚠️ Could not open files: {str(e)}")
@@ -672,7 +738,9 @@ def main() -> None:
         # Output JSON response with confidence scores (on new line for server parsing)
         success_response = {
             "success": True,
-            "confidenceScores": confidence_scores
+            "confidenceScores": confidence_scores,
+            "assignmentName": assignment_name_from_pdf,
+            "pdfPath": combined_pdf_path
         }
         print("\n" + json.dumps(success_response), flush=True)
         

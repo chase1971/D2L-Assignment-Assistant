@@ -147,13 +147,16 @@ def split_combined_pdf(
     extraction_folder: str
 ) -> int:
     """Split a combined PDF back into individual student PDFs."""
-    # Removed verbose logging: separators, headers, page counts, name lists
+    from user_messages import log_raw
     
     try:
+        log_raw(f"   📖 Reading PDF ({os.path.basename(combined_pdf_path)})...", "INFO")
         reader = PdfReader(combined_pdf_path)
         total_pages = len(reader.pages)
+        log_raw(f"   📄 Found {total_pages} pages", "INFO")
         
         # Extract names from pages
+        log_raw(f"   🔍 Extracting student names from pages...", "INFO")
         extracted_names = _extract_names_from_pages(reader, total_pages)
         
         # Validate that we found actual student names (not all "Unknown" or "No text")
@@ -162,16 +165,19 @@ def split_combined_pdf(
             log("SPLIT_WRONG_PDF")
             raise Exception("Wrong combined PDF uploaded. Try again.")
         
+        log_raw(f"   ✓ Found {len(valid_names)} student submissions", "INFO")
+        
         # Build name map from import file
         import_name_map = _build_import_name_map(import_df)
         
         # Process students
+        log_raw(f"   ✂️ Splitting into individual PDFs...", "INFO")
         students_processed = _process_all_students(
             extracted_names, reader, total_pages, extraction_folder, 
             import_name_map
         )
         
-        # Removed verbose logging: success message will be logged by caller
+        log_raw(f"   ✓ Created {students_processed} student PDFs", "INFO")
         
         return students_processed
         

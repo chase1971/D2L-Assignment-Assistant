@@ -67,16 +67,36 @@ def get_downloads_path():
     return default_path
 
 def get_rosters_path():
-    """Get the configured rosters path"""
+    """Get the configured rosters path, checking both G and C drives"""
     config = load_config()
     rosters_path = config.get('rostersPath', '')
     
     if rosters_path and os.path.exists(rosters_path):
         return rosters_path
     
-    # Fallback to default
+    # Fallback: Try both G:\ and C:\ drives (prioritize G, then C)
+    username = os.getenv('USERNAME', 'chase')
+    drives_to_try = ['G', 'C']
+    
+    for drive_letter in drives_to_try:
+        # Try two path patterns:
+        # 1. Direct drive root (for mapped drives like G: Google Drive)
+        #    G:\My Drive\Rosters etc
+        # 2. User profile path (for local drives like C:)
+        #    C:\Users\chase\My Drive\Rosters etc
+        
+        path_patterns = [
+            os.path.join(f"{drive_letter}:\\", "My Drive", "Rosters etc"),
+            os.path.join(f"{drive_letter}:\\", "Users", username, "My Drive", "Rosters etc")
+        ]
+        
+        for test_path in path_patterns:
+            if os.path.exists(test_path):
+                return test_path
+    
+    # Ultimate fallback if nothing exists
     drive = config.get('drive', 'C')
-    default_path = os.path.join(f"{drive}:\\", "Users", os.getenv('USERNAME', 'chase'), "My Drive", "Rosters etc")
+    default_path = os.path.join(f"{drive}:\\", "Users", username, "My Drive", "Rosters etc")
     return default_path
 
 def get_drive():

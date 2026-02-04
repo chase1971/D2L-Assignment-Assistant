@@ -59,29 +59,34 @@ def extract_text_google_vision(img, return_confidence=False):
         
         response = requests.post(url, json=request_body, timeout=API_TIMEOUT_SECONDS)
         
-        if response.status_code == 200:
-            result = response.json()
-            if 'responses' in result and len(result['responses']) > 0:
-                if 'textAnnotations' in result['responses'][0]:
-                    text = result['responses'][0]['textAnnotations'][0]['description'].strip()
-                    
-                    confidence = 0.0
-                    if 'fullTextAnnotation' in result['responses'][0]:
-                        pages = result['responses'][0]['fullTextAnnotation'].get('pages', [])
-                        confidences = []
-                        for page in pages:
-                            for block in page.get('blocks', []):
-                                if 'confidence' in block:
-                                    confidences.append(block['confidence'])
-                        if confidences:
-                            confidence = sum(confidences) / len(confidences)
-                    
-                    if return_confidence:
-                        return (text, confidence)
-                    return text
+        if response.status_code != 200:
+            # Log API errors
+            print(f"[DEBUG] Google Vision API error: {response.status_code} - {response.text[:200]}")
+            return (None, 0.0) if return_confidence else None
+        
+        result = response.json()
+        if 'responses' in result and len(result['responses']) > 0:
+            if 'textAnnotations' in result['responses'][0]:
+                text = result['responses'][0]['textAnnotations'][0]['description'].strip()
+                
+                confidence = 0.0
+                if 'fullTextAnnotation' in result['responses'][0]:
+                    pages = result['responses'][0]['fullTextAnnotation'].get('pages', [])
+                    confidences = []
+                    for page in pages:
+                        for block in page.get('blocks', []):
+                            if 'confidence' in block:
+                                confidences.append(block['confidence'])
+                    if confidences:
+                        confidence = sum(confidences) / len(confidences)
+                
+                if return_confidence:
+                    return (text, confidence)
+                return text
         
         return (None, 0.0) if return_confidence else None
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG] Google Vision API exception: {e}")
         return (None, 0.0) if return_confidence else None
 
 

@@ -111,7 +111,7 @@ def process_submissions(
         for student_name in multiple_pdf_students:
             log("SUBMISSION_MULTIPLE_PDF_ITEM", name=student_name)
     
-    # Flag students with fewer pages than average
+    # Flag students with page counts different from mode
     _check_page_counts(page_counts, student_errors)
     
     # Validation
@@ -496,15 +496,21 @@ def _move_unreadable_submissions(
 
 
 def _check_page_counts(page_counts: Dict[str, int], student_errors: List[str]) -> None:
-    """Flag students with fewer pages than average."""
+    """Flag students with page counts different from the mode (most common)."""
     if not page_counts:
         return
     
-    avg_pages = sum(page_counts.values()) / len(page_counts)
+    # Calculate mode (most common page count)
+    from collections import Counter
+    page_count_freq = Counter(page_counts.values())
+    mode_pages = page_count_freq.most_common(1)[0][0]  # Get the most common page count
+    mode_count = page_count_freq.most_common(1)[0][1]  # How many students have this count
+    
+    # Flag students who don't have the mode page count
     for name, page_count in page_counts.items():
-        if page_count < avg_pages * PAGE_COUNT_WARNING_RATIO:
+        if page_count != mode_pages:
             student_errors.append(
-                f"{name}: Has only {page_count} page(s), below average of {avg_pages:.1f} pages"
+                f"{name}: Has {page_count} page(s), but most students ({mode_count}) submitted {mode_pages} page(s)"
             )
 
 

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Trash2, Info } from 'lucide-react';
 import { openStudentPdf, openCombinedPdf, openImportFile } from '../services/quizGraderService';
 
 interface ConfidenceScore {
@@ -12,6 +12,7 @@ interface LogTerminalProps {
   logs: string[];
   isDark: boolean;
   addLog: (message: string) => void;
+  clearLogs: () => void;
   drive: string;
   selectedClass: string;
   confidenceScores?: ConfidenceScore[] | null;
@@ -25,11 +26,13 @@ export default function LogTerminal({
   logs,
   isDark,
   addLog,
+  clearLogs,
   drive,
   selectedClass,
   confidenceScores,
 }: LogTerminalProps) {
   const [showConfidenceModal, setShowConfidenceModal] = useState(false);
+  const [showDetailedLogs, setShowDetailedLogs] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll logs to bottom
@@ -47,6 +50,9 @@ export default function LogTerminal({
     
     // Hide empty lines
     if (!logTrimmed) return false;
+    
+    // If showing detailed logs, show everything
+    if (showDetailedLogs) return true;
     
     // Hide JSON formatted output (shouldn't happen, but just in case)
     if (logTrimmed.startsWith('{') && logTrimmed.includes('"success"')) {
@@ -114,12 +120,40 @@ export default function LogTerminal({
         ? 'bg-[#0f1729] border-[#1a2942]' 
         : 'bg-[#e0e0e3] border-gray-400'
     }`}>
-      <div className={`p-3 border-b ${
+      <div className={`p-3 border-b flex items-center justify-between ${
         isDark 
           ? 'border-[#1a2942]' 
           : 'border-gray-400'
       }`}>
         <span className={`font-bold ${isDark ? 'text-gray-400' : 'text-[#1a2942]'}`}>LOG TERMINAL</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDetailedLogs(!showDetailedLogs)}
+            className={`p-1.5 rounded transition-colors ${
+              showDetailedLogs 
+                ? (isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white')
+                : (isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-300')
+            }`}
+            style={{
+              color: showDetailedLogs ? 'white' : (isDark ? '#888' : '#666'),
+            }}
+            title={showDetailedLogs ? "Hide detailed logs" : "Show detailed logs"}
+          >
+            <Info size={16} />
+          </button>
+          <button
+            onClick={clearLogs}
+            className={`p-1.5 rounded hover:bg-opacity-80 transition-colors ${
+              isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-300'
+            }`}
+            style={{
+              color: isDark ? '#888' : '#666',
+            }}
+            title="Clear logs"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
       <div 
         ref={logContainerRef}
@@ -276,7 +310,7 @@ export default function LogTerminal({
         >
           <div 
             style={{
-              width: '400px',
+              width: '800px',
               maxWidth: '90vw',
               maxHeight: '70vh',
               backgroundColor: isDark ? '#1a2942' : '#d0d0d4',
@@ -337,7 +371,11 @@ export default function LogTerminal({
                 backgroundColor: isDark ? '#0f1729' : '#b8b8bc',
               }}
             >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '8px' 
+              }}>
                 {confidenceScores
                   .sort((a, b) => b.confidence - a.confidence)
                   .map((score, idx) => {

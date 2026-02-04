@@ -158,10 +158,10 @@ export const processSelectedCompletion = (drive: string, selectedClass: string, 
     addLog
   });
 
-export const extractGrades = (drive: string, selectedClass: string, addLog: LogCallback): Promise<ApiResult> =>
+export const extractGrades = (drive: string, selectedClass: string, pdfPath?: string, addLog: LogCallback): Promise<ApiResult> =>
   apiCall({
     endpoint: '/quiz/extract-grades',
-    body: { drive, className: selectedClass },
+    body: { drive, className: selectedClass, pdfPath },
     errorMessage: 'Failed to extract grades',
     addLog
   });

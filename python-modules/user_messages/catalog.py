@@ -297,6 +297,11 @@ MESSAGES = {
     "COMPLETION_HEADER_COMPLETE": ("COMPLETION PROCESSING COMPLETED", "SUCCESS", "S1035"),
     "COMPLETION_FAILED_HEADER": ("COMPLETION PROCESSING FAILED", "ERROR", "E1043"),
     "COMPLETION_FINISHED": ("PROCESSING FINISHED", "INFO", "I1099"),
+    "COMPLETION_NO_SUBMISSION_HEADER": ("❌ Students who didn't do the assignment:", "WARNING", "W1019"),
+    "COMPLETION_NO_SUBMISSION_ITEM": ("   • {name}", "WARNING", "W1020"),
+    "COMPLETION_PAGE_MODE": ("📊 Page mode: {mode} page(s) (submitted by {count}/{total} students)", "INFO", "I1105"),
+    "COMPLETION_DIFFERENT_PAGES_HEADER": ("⚠️  Students who submitted different number of pages:", "WARNING", "W1021"),
+    "COMPLETION_DIFFERENT_PAGES_ITEM": ("   • {name}: {pages} page(s) (expected {mode})", "WARNING", "W1022"),
     
     # =========================================================================
     # MISC

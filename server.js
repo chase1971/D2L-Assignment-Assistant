@@ -382,8 +382,8 @@ async function runPythonScript(scriptName, args = []) {
       return arg;
     }).join(' ');
     
-    // Construct command string for Windows shell
-    const command = `${quotedPythonPath} ${quotedScriptPath} ${quotedArgs}`;
+    // Construct command string for Windows shell with -u flag for unbuffered output
+    const command = `${quotedPythonPath} -u ${quotedScriptPath} ${quotedArgs}`;
     
     const proc = exec(command, {
       cwd: SCRIPTS_PATH,
@@ -697,13 +697,19 @@ app.post('/api/quiz/process-completion-selected', async (req, res) => {
 
 app.post('/api/quiz/extract-grades', async (req, res) => {
   try {
-    const { drive, className } = req.body;
+    const { drive, className, pdfPath } = req.body;
     
     if (!validateClassName(className)) {
       return apiResponse(res, { success: false, error: 'Invalid class name' });
     }
     
-    const result = await runPythonScript('extract_grades_cli.py', [drive || 'C', className]);
+    // Pass pdfPath as optional third argument if provided
+    const args = [drive || 'C', className];
+    if (pdfPath) {
+      args.push(pdfPath);
+    }
+    
+    const result = await runPythonScript('extract_grades_cli.py', args);
     
     // Always use userLogs if available (they're already parsed from [LOG:LEVEL] format)
     let logs = [];
@@ -741,8 +747,10 @@ app.post('/api/quiz/extract-grades', async (req, res) => {
       error = result.error || 'Extraction failed';
     }
     
-    // Extract confidence scores from JSON response if available
+    // Extract confidence scores and assignment info from JSON response if available
     let confidenceScores = null;
+    let assignmentName = null;
+    let resultPdfPath = null;
     try {
       const trimmedOutput = result.output.trim();
       // Look for JSON at the end of output (after all logs)
@@ -751,6 +759,12 @@ app.post('/api/quiz/extract-grades', async (req, res) => {
         const jsonData = JSON.parse(jsonMatch[0]);
         if (jsonData.confidenceScores) {
           confidenceScores = jsonData.confidenceScores;
+        }
+        if (jsonData.assignmentName) {
+          assignmentName = jsonData.assignmentName;
+        }
+        if (jsonData.pdfPath) {
+          resultPdfPath = jsonData.pdfPath;
         }
         // Also update success from JSON if available
         if (jsonData.success !== undefined) {
@@ -772,6 +786,8 @@ app.post('/api/quiz/extract-grades', async (req, res) => {
       logs,  // Keep for backward compatibility
       userLogs,  // New format with level info
       ...(confidenceScores ? { confidenceScores } : {}),
+      ...(assignmentName ? { assignmentName } : {}),
+      ...(resultPdfPath ? { pdfPath: resultPdfPath } : {}),
       ...(success ? {} : { error: error || 'Extraction failed' })
     });
   } catch (error) {
