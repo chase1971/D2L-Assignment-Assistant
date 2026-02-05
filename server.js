@@ -42,6 +42,12 @@ app.use(cors());
 app.use(express.json({ limit: '500mb' })); // Increase JSON body size limit
 app.use(express.urlencoded({ extended: true, limit: '500mb' })); // Increase URL-encoded body size limit
 
+// SSE Logger Module
+const sseLogger = require('./sse-logger');
+
+// Patch Manager Module
+const patchManager = require('./patch-manager');
+
 // Logging
 function writeLog(message, isError = false) {
   const timestamp = new Date().toISOString();
@@ -365,7 +371,17 @@ function getUserLogs(result) {
 // Helper to run Python scripts
 async function runPythonScript(scriptName, args = []) {
   const pythonPath = await findPython();
-  const scriptPath = path.join(SCRIPTS_PATH, scriptName);
+  
+  // Check for patched version first
+  const scriptInfo = patchManager.getScriptPath(SCRIPTS_PATH, scriptName);
+  const scriptPath = scriptInfo.path;
+  
+  // Get appropriate working directory (patch dir if patches exist)
+  const workingDir = patchManager.getWorkingDirectory(SCRIPTS_PATH);
+  
+  if (scriptInfo.isPatched) {
+    writeLog(`🔧 Using PATCHED script: ${scriptName}`);
+  }
   
   writeLog(`Running: ${scriptName} ${args.join(' ')}`);
   writeLog(`Full path: ${scriptPath}`);
@@ -386,7 +402,7 @@ async function runPythonScript(scriptName, args = []) {
     const command = `${quotedPythonPath} -u ${quotedScriptPath} ${quotedArgs}`;
     
     const proc = exec(command, {
-      cwd: SCRIPTS_PATH,
+      cwd: workingDir,
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
       maxBuffer: MAX_BUFFER_SIZE
     });
@@ -399,6 +415,10 @@ async function runPythonScript(scriptName, args = []) {
       // Parse [USER] and [DEV] prefixes and route accordingly
       data.toString().split('\n').filter(l => l.trim()).forEach(line => {
         const trimmed = line.trim();
+        
+        // Broadcast to SSE clients in real-time
+        sseLogger.parseAndBroadcastLogLine(trimmed);
+        
         if (trimmed.startsWith('[USER]')) {
           // User-facing log - strip prefix and log normally
           const userMessage = trimmed.substring(7); // Remove '[USER]' prefix
@@ -537,6 +557,9 @@ async function runPythonScript(scriptName, args = []) {
 // API ROUTES
 // ============================================================
 
+// SSE log stream endpoint
+app.get('/api/logs/stream', sseLogger.handleSseConnection);
+
 // Test endpoint
 app.get('/api/test', (req, res) => {
   apiResponse(res, { success: true, message: 'Backend server is running!' });
@@ -587,7 +610,13 @@ app.post('/api/quiz/process', async (req, res) => {
       return apiResponse(res, { success: false, error: 'Invalid class name' });
     }
     
+    // Broadcast process start
+    sseLogger.broadcastProcessStart('process-quiz', { className });
+    
     const result = await runPythonScript('process_quiz_cli.py', [drive || 'C', className]);
+    
+    // Broadcast process complete
+    sseLogger.broadcastProcessComplete('process-quiz', result.success);
     
     // Check for multiple ZIP files
     const zipResult = parseZipFilesFromOutput(result.output, loadConfig().downloadsPath);
@@ -608,6 +637,7 @@ app.post('/api/quiz/process', async (req, res) => {
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
+    sseLogger.broadcastProcessComplete('process-quiz', false, { error: error.message });
     apiResponse(res, { success: false, error: error.message });
   }
 });
@@ -620,7 +650,11 @@ app.post('/api/quiz/process-selected', async (req, res) => {
       return apiResponse(res, { success: false, error: 'Invalid class name' });
     }
     
+    sseLogger.broadcastProcessStart('process-quiz-selected', { className });
+    
     const result = await runPythonScript('process_quiz_cli.py', [drive || 'C', className, zipPath]);
+    
+    sseLogger.broadcastProcessComplete('process-quiz-selected', result.success);
     
     apiResponse(res, {
       success: result.success,
@@ -630,6 +664,7 @@ app.post('/api/quiz/process-selected', async (req, res) => {
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
+    sseLogger.broadcastProcessComplete('process-quiz-selected', false, { error: error.message });
     apiResponse(res, { success: false, error: error.message });
   }
 });
@@ -645,7 +680,11 @@ app.post('/api/quiz/process-completion', async (req, res) => {
     const args = [drive || 'C', className];
     if (dontOverride) args.push('--dont-override');
     
+    sseLogger.broadcastProcessStart('process-completion', { className });
+    
     const result = await runPythonScript('process_completion_cli.py', args);
+    
+    sseLogger.broadcastProcessComplete('process-completion', result.success);
     
     // Check for multiple ZIP files
     const zipResult = parseZipFilesFromOutput(result.output, loadConfig().downloadsPath);
@@ -666,6 +705,7 @@ app.post('/api/quiz/process-completion', async (req, res) => {
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
+    sseLogger.broadcastProcessComplete('process-completion', false, { error: error.message });
     apiResponse(res, { success: false, error: error.message });
   }
 });
@@ -681,7 +721,11 @@ app.post('/api/quiz/process-completion-selected', async (req, res) => {
     const args = [drive || 'C', className, zipPath];
     if (dontOverride) args.push('--dont-override');
     
+    sseLogger.broadcastProcessStart('process-completion-selected', { className });
+    
     const result = await runPythonScript('process_completion_cli.py', args);
+    
+    sseLogger.broadcastProcessComplete('process-completion-selected', result.success);
     
     apiResponse(res, {
       success: result.success,
@@ -691,6 +735,7 @@ app.post('/api/quiz/process-completion-selected', async (req, res) => {
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
+    sseLogger.broadcastProcessComplete('process-completion-selected', false, { error: error.message });
     apiResponse(res, { success: false, error: error.message });
   }
 });
@@ -709,7 +754,11 @@ app.post('/api/quiz/extract-grades', async (req, res) => {
       args.push(pdfPath);
     }
     
+    sseLogger.broadcastProcessStart('extract-grades', { className });
+    
     const result = await runPythonScript('extract_grades_cli.py', args);
+    
+    sseLogger.broadcastProcessComplete('extract-grades', result.success);
     
     // Always use userLogs if available (they're already parsed from [LOG:LEVEL] format)
     let logs = [];
@@ -895,7 +944,11 @@ app.post('/api/quiz/split-pdf', async (req, res) => {
       args.push(assignmentName);
     }
     
+    sseLogger.broadcastProcessStart('split-pdf', { className });
+    
     const result = await runPythonScript('split_pdf_cli.py', args);
+    
+    sseLogger.broadcastProcessComplete('split-pdf', result.success);
     
     apiResponse(res, {
       success: result.success,
@@ -903,6 +956,7 @@ app.post('/api/quiz/split-pdf', async (req, res) => {
       ...(result.success ? {} : { error: result.error || 'Split failed' })
     });
   } catch (error) {
+    sseLogger.broadcastProcessComplete('split-pdf', false, { error: error.message });
     apiResponse(res, { success: false, error: error.message });
   }
 });
@@ -1790,6 +1844,110 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
     );
   } catch (error) {
     writeLog(`Folder picker error: ${error.message}`, true);
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// ============================================================
+// PATCH MANAGEMENT ENDPOINTS
+// ============================================================
+
+// Get patch status
+app.get('/api/patches/status', async (req, res) => {
+  try {
+    const status = patchManager.getPatchStatus();
+    apiResponse(res, { success: true, ...status });
+  } catch (error) {
+    writeLog(`[Patch Status] Error: ${error.message}`, true);
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Import patch file
+app.post('/api/patches/import', upload.single('patchFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return apiResponse(res, { success: false, error: 'No patch file provided' });
+    }
+    
+    writeLog(`[Patch Import] Importing patch from: ${req.file.originalname}`);
+    
+    // The file is already uploaded to temp directory by multer
+    const result = await patchManager.importPatchFile(req.file.path);
+    
+    // Clean up uploaded file
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (cleanupError) {
+      writeLog(`[Patch Import] Failed to delete temp file: ${cleanupError.message}`, true);
+    }
+    
+    apiResponse(res, result);
+  } catch (error) {
+    writeLog(`[Patch Import] Error: ${error.message}`, true);
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Select patch file from file system
+app.post('/api/patches/select-file', async (req, res) => {
+  try {
+    writeLog('Opening patch file picker...');
+    
+    // Create a temporary PowerShell script for file picker
+    const tempScriptPath = path.join(os.tmpdir(), `patch-picker-${Date.now()}.ps1`);
+    const psScript = `
+Add-Type -AssemblyName System.Windows.Forms
+$FileBrowser = New-Object System.Windows.Forms.OpenFileDialog
+$FileBrowser.Filter = 'Patch Files (*.zip)|*.zip|All Files (*.*)|*.*'
+$FileBrowser.Title = 'Select Patch File'
+$result = $FileBrowser.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    Write-Output $FileBrowser.FileName
+}
+`;
+    
+    // Write and execute the script
+    fs.writeFileSync(tempScriptPath, psScript, 'utf8');
+    
+    exec(`powershell -NoProfile -ExecutionPolicy Bypass -Sta -File "${tempScriptPath}"`, 
+      { maxBuffer: 10 * 1024 * 1024, windowsHide: false },
+      async (error, stdout, stderr) => {
+        // Clean up temp script
+        try {
+          fs.unlinkSync(tempScriptPath);
+        } catch (cleanupError) {
+          writeLog(`Failed to delete temp script: ${cleanupError.message}`, true);
+        }
+        
+        const selectedPath = stdout.trim();
+        
+        if (error || !selectedPath) {
+          writeLog('Patch file selection cancelled or failed');
+          return apiResponse(res, { success: false, error: 'No file selected' });
+        }
+        
+        writeLog(`Selected patch file: ${selectedPath}`);
+        
+        // Import the patch
+        const result = await patchManager.importPatchFile(selectedPath);
+        apiResponse(res, result);
+      }
+    );
+  } catch (error) {
+    writeLog(`[Patch Select] Error: ${error.message}`, true);
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
+// Clear all patches
+app.post('/api/patches/clear', async (req, res) => {
+  try {
+    writeLog('Clearing all patches...');
+    const result = patchManager.clearAllPatches();
+    apiResponse(res, result);
+  } catch (error) {
+    writeLog(`[Patch Clear] Error: ${error.message}`, true);
     apiResponse(res, { success: false, error: error.message });
   }
 });

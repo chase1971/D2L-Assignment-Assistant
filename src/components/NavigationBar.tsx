@@ -23,6 +23,7 @@ interface NavigationBarProps {
   classOptions: ClassOption[];
   handleOpenDownloads: () => void;
   onClassSetupClick: () => void;
+  onPatchManagerClick: () => void;
   serverStatus: ServerStatus;
   metalButtonClass: (isDark: boolean, textColor?: string) => string;
   metalButtonStyle: (isDark: boolean) => React.CSSProperties | undefined;
@@ -39,6 +40,7 @@ export default function NavigationBar({
   classOptions,
   handleOpenDownloads,
   onClassSetupClick,
+  onPatchManagerClick,
   serverStatus,
   metalButtonClass,
   metalButtonStyle,
@@ -133,6 +135,33 @@ export default function NavigationBar({
           >
             <Folder size={14} />
             DOWNLOADS
+          </button>
+
+          <button
+            onClick={onPatchManagerClick}
+            className={`px-3 py-1.5 rounded-lg border shadow-lg flex items-center gap-2 text-sm font-medium ${metalButtonClass(isDark)}`}
+            style={{ ...metalButtonStyle(isDark), transition: 'all 0.15s ease' }}
+            title="Patch Manager"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.filter = 'brightness(1.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.filter = 'brightness(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'translateY(2px) scale(0.98)';
+              e.currentTarget.style.boxShadow = isDark 
+                ? 'inset 0 2px 4px rgba(0,0,0,0.6)'
+                : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '';
+            }}
+          >
+            🔧 PATCHES
           </button>
 
           <div className="w-px h-6 bg-gray-400 mx-2"></div>

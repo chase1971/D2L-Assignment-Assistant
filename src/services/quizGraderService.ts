@@ -75,7 +75,8 @@ async function apiCall({ endpoint, body, logMessage, errorMessage, addLog }: Api
 
     const result = await response.json();
     
-    // Process logs from backend
+    // Process logs from backend (FALLBACK: logs also come via SSE in real-time)
+    // This ensures logs still appear if SSE connection fails
     if (addLog) {
       // New format: userLogs array of {level, message} objects
       if (result.userLogs && Array.isArray(result.userLogs)) {
@@ -622,3 +623,43 @@ export const maximizeWindow = () => {
   }
 };
 
+// ============================================================
+// PATCH MANAGEMENT
+// ============================================================
+
+export interface PatchStatus {
+  success: boolean;
+  hasPatch: boolean;
+  patchedFilesCount: number;
+  patchedFiles: string[];
+  patchInfo?: {
+    version?: string;
+    date?: string;
+    description?: string;
+    lastImported?: string;
+    importedFrom?: string;
+  };
+  patchDirectory: string;
+}
+
+export const getPatchStatus = (): Promise<PatchStatus> =>
+  apiCall({
+    endpoint: '/patches/status',
+    errorMessage: 'Failed to get patch status'
+  }) as Promise<PatchStatus>;
+
+export const selectAndImportPatch = (addLog?: LogCallback): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/patches/select-file',
+    logMessage: 'Opening patch file selector...',
+    errorMessage: 'Failed to import patch',
+    addLog
+  });
+
+export const clearPatches = (addLog?: LogCallback): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/patches/clear',
+    logMessage: 'Clearing all patches...',
+    errorMessage: 'Failed to clear patches',
+    addLog
+  });

@@ -6,6 +6,7 @@ import ConfirmationModal from './ConfirmationModal';
 import ClearOptionsModal, { ClearOption } from './ClearOptionsModal';
 import ClassSetupModal from './ClassSetupModal';
 import EmailStudentsModal from './EmailStudentsModal';
+import PatchManager from './PatchManager';
 import ActionCard from './ActionCard';
 import LogTerminal from './LogTerminal';
 import NavigationBar from './NavigationBar';
@@ -32,6 +33,7 @@ import {
 } from '../services/quizGraderService';
 import { SERVER_POLL_INTERVAL_MS, SERVER_CHECK_TIMEOUT_MS } from './constants/ui-constants';
 import { useThemeStyles } from './hooks/useThemeStyles';
+import { useLogStream } from '../hooks/useLogStream';
 
 // Option 2: Horizontal Top Bar with Grid Layout Below - Figma Metallic Style
 export default function Option2() {
@@ -39,13 +41,55 @@ export default function Option2() {
   const [isDark, setIsDark] = useState(false);
   const [selectedClass, setSelectedClass] = useState('');
   const [dontOverride, setDontOverride] = useState(false);
-  const [logs, setLogs] = useState([]);
+  const [logs, setLogs] = useState<string[]>([]);
+  
+  // Add log function with duplicate filtering
+  const addLog = (message: string) => {
+    if (message) {
+      setLogs(prevLogs => {
+        // Filter out unwanted messages
+        const messageLower = message.toLowerCase();
+        const unwantedPatterns = [
+          'loaded import file',
+          'sending split pdf request to backend',
+          'uploading pdf to backend',
+          'sending request to backend',
+          'sending process request to backend',
+          'sending selected quiz processing request to backend',
+          'sending completion processing request to backend',
+          'sending selected completion processing request to backend',
+          'sending open downloads request to backend',
+          'sending clear request to backend',
+          'sending clear archived data request to backend',
+          'opening downloads folder',
+          'opening folder',
+          '📡 sending',
+          '📁 opening'
+        ];
+        
+        if (unwantedPatterns.some(pattern => messageLower.includes(pattern))) {
+          return prevLogs; // Don't add unwanted messages
+        }
+        
+        // Filter out duplicate consecutive messages
+        if (prevLogs.length > 0 && prevLogs[prevLogs.length - 1] === message) {
+          return prevLogs; // Don't add duplicate
+        }
+        
+        return [...prevLogs, message];
+      });
+    }
+  };
+  
+  // Connect to SSE log stream for real-time logging
+  const { isConnected } = useLogStream(addLog);
   
   // Class management
   const [classOptions, setClassOptions] = useState<Array<{ value: string; label: string }>>([
     { value: '', label: 'Select Class' }
   ]);
   const [showClassSetup, setShowClassSetup] = useState(false);
+  const [showPatchManager, setShowPatchManager] = useState(false);
   const [classes, setClasses] = useState<ClassData[]>([]);
   
   // Processing states
@@ -255,44 +299,6 @@ export default function Option2() {
       }
     } catch (error) {
       addLog(`❌ Error loading classes: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-
-  // Add log helper with duplicate filtering
-  const addLog = (message: string) => {
-    if (message) {
-      setLogs(prevLogs => {
-        // Filter out unwanted messages
-        const messageLower = message.toLowerCase();
-        const unwantedPatterns = [
-          'loaded import file',
-          'sending split pdf request to backend',
-          'uploading pdf to backend',
-          'sending request to backend',
-          'sending process request to backend',
-          'sending selected quiz processing request to backend',
-          'sending completion processing request to backend',
-          'sending selected completion processing request to backend',
-          'sending open downloads request to backend',
-          'sending clear request to backend',
-          'sending clear archived data request to backend',
-          'opening downloads folder',
-          'opening folder',
-          '📡 sending',
-          '📁 opening'
-        ];
-        
-        if (unwantedPatterns.some(pattern => messageLower.includes(pattern))) {
-          return prevLogs; // Don't add unwanted messages
-        }
-        
-        // Filter out duplicate consecutive messages
-        if (prevLogs.length > 0 && prevLogs[prevLogs.length - 1] === message) {
-          return prevLogs; // Don't add duplicate
-        }
-        
-        return [...prevLogs, message];
-      });
     }
   };
 
@@ -1274,6 +1280,7 @@ export default function Option2() {
         classOptions={classOptions}
         handleOpenDownloads={handleOpenDownloads}
         onClassSetupClick={() => setShowClassSetup(true)}
+        onPatchManagerClick={() => setShowPatchManager(true)}
         serverStatus={serverStatus}
         metalButtonClass={metalButtonClass}
         metalButtonStyle={metalButtonStyle}
@@ -1369,6 +1376,15 @@ export default function Option2() {
         metalButtonClass={metalButtonClass}
         metalButtonStyle={metalButtonStyle}
       />
+
+      {/* Patch Manager Modal */}
+      {showPatchManager && (
+        <PatchManager
+          isDark={isDark}
+          onClose={() => setShowPatchManager(false)}
+          addLog={addLog}
+        />
+      )}
 
       {/* Main Content Grid */}
       <div className="flex-1 overflow-auto p-3">

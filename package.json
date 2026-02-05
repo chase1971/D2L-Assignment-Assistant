@@ -51,6 +51,8 @@
       "dist-frontend/**/*",
       "electron/**/*",
       "server.js",
+      "sse-logger.js",
+      "patch-manager.js",
       "package.json"
     ],
     "extraResources": [
@@ -58,7 +60,8 @@
         "from": "scripts",
         "to": "scripts",
         "filter": [
-          "**/*.py"
+          "**/*.py",
+          "classes.json"
         ]
       },
       {
@@ -84,7 +87,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "sign": null
     },
     "nsis": {
       "oneClick": false,
