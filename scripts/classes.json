@@ -1,3 +1,39 @@
 {
-  "classes": []
+  "classes": [
+    {
+      "id": "hardcoded-ca4101-mw-8-920",
+      "value": "CA 4101 MW 8-920",
+      "label": "CA 4101 (MW 8:00-9:20)",
+      "rosterFolderPath": "",
+      "isProtected": false
+    },
+    {
+      "id": "hardcoded-fm4101-tth-8-920",
+      "value": "FM 4101 TTH 8-920",
+      "label": "FM 4101 (TTH 8:00-9:20)",
+      "rosterFolderPath": "",
+      "isProtected": false
+    },
+    {
+      "id": "hardcoded-fm4102-mw-930-1050",
+      "value": "FM 4102 MW 930-1050",
+      "label": "FM 4102 (MW 9:30-10:50)",
+      "rosterFolderPath": "",
+      "isProtected": false
+    },
+    {
+      "id": "hardcoded-fm4201-tth-930-1050",
+      "value": "FM 4201 TTH 930-1050",
+      "label": "FM 4201 (TTH 9:30-10:50)",
+      "rosterFolderPath": "",
+      "isProtected": false
+    },
+    {
+      "id": "hardcoded-fm4203-tth-1230-150",
+      "value": "FM 4203 TTH 1230-150",
+      "label": "FM 4203 (TTH 12:30-1:50)",
+      "rosterFolderPath": "",
+      "isProtected": false
+    }
+  ]
 }

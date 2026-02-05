@@ -35,35 +35,20 @@ from pathlib import Path
 CLASSES_FILE = Path(__file__).parent / "classes.json"
 
 def load_classes():
-    """Load classes from JSON file, ensuring protected class always exists"""
-    PROTECTED_CLASS = {
-        "id": "protected-fm4202",
-        "value": "TTH 11-1220 FM 4202",
-        "label": "FM 4202 (TTH 11:00-12:20)",
-        "rosterFolderPath": "C:\\Users\\chase\\My Drive\\Rosters etc\\TTH 11-1220 FM 4202",
-        "isProtected": True
-    }
-    
+    """Load classes from JSON file"""
     if not CLASSES_FILE.exists():
-        # Create default file with protected FM 4202 class
-        default_data = {"classes": [PROTECTED_CLASS]}
+        # Create default empty file
+        default_data = {"classes": []}
         save_classes(default_data)
         return default_data
     
     try:
         with open(CLASSES_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        
-        # Ensure protected class exists
-        protected_exists = any(cls.get("id") == "protected-fm4202" for cls in data.get("classes", []))
-        if not protected_exists:
-            data["classes"].insert(0, PROTECTED_CLASS)
-            save_classes(data)
-        
         return data
     except Exception as e:
-        # If file is corrupted, reset with protected class
-        default_data = {"classes": [PROTECTED_CLASS]}
+        # If file is corrupted, reset with empty classes
+        default_data = {"classes": []}
         save_classes(default_data)
         return default_data
 
