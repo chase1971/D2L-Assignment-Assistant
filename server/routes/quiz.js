@@ -16,12 +16,8 @@ const { runPythonScript, writeLog } = require('../python-runner');
 const { validateClassName } = require('../helpers/validation');
 const { getPossibleRostersPaths, findClassFolder, findPdfsFolder, findMostRecentProcessingFolder } = require('../helpers/file-paths');
 const { getUserLogs, parseZipFilesFromOutput } = require('../helpers/log-parser');
+const { apiResponse } = require('../helpers/api-response');
 const sseLogger = require('../../sse-logger');
-
-// Standard API response helper
-function apiResponse(res, { success, logs = [], error = null, ...extra }) {
-  res.json({ success, logs, error: success ? null : error, ...extra });
-}
 
 // List classes
 router.post('/list-classes', async (req, res) => {

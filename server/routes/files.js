@@ -15,11 +15,7 @@ const { loadConfig } = require('../config');
 const { writeLog } = require('../python-runner');
 const { findPdfsFolder } = require('../helpers/file-paths');
 const { parseCSVLine } = require('../helpers/csv-parser');
-
-// Standard API response helper
-function apiResponse(res, { success, logs = [], error = null, ...extra }) {
-  res.json({ success, logs, error: success ? null : error, ...extra });
-}
+const { apiResponse } = require('../helpers/api-response');
 
 // Open a specific file (PDF, Excel, etc.)
 router.post('/open-file', async (req, res) => {

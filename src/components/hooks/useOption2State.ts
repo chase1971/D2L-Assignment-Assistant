@@ -6,25 +6,37 @@
 import { useState, useEffect } from 'react';
 import { loadClasses, checkServerStatus, ClassData } from '../../services/quizGraderService';
 import { SERVER_POLL_INTERVAL_MS, SERVER_CHECK_TIMEOUT_MS } from '../constants/ui-constants';
-import { useLogStream } from '../../hooks/useLogStream';
+import { useLogStream } from './useLogStream';
+import type {
+  ZipFile,
+  ProcessingFolder,
+  UploadedPdfFile,
+  ConfirmationConfig,
+  ClearOptionsConfig,
+  ServerStatus,
+  EmailStudent,
+  ConfidenceScore,
+  LastProcessedAssignment,
+  ClassOption
+} from '../../types';
 
 export interface Option2State {
   // Theme
   isDark: boolean;
   setIsDark: (value: boolean) => void;
-  
+
   // Class management
   selectedClass: string;
   setSelectedClass: (value: string) => void;
-  classOptions: Array<{ value: string; label: string }>;
-  setClassOptions: (value: Array<{ value: string; label: string }>) => void;
+  classOptions: ClassOption[];
+  setClassOptions: (value: ClassOption[]) => void;
   classes: ClassData[];
   setClasses: (value: ClassData[]) => void;
   showClassSetup: boolean;
   setShowClassSetup: (value: boolean) => void;
   showPatchManager: boolean;
   setShowPatchManager: (value: boolean) => void;
-  
+
   // Processing states
   processing: boolean;
   setProcessing: (value: boolean) => void;
@@ -36,79 +48,79 @@ export interface Option2State {
   setSplitting: (value: boolean) => void;
   clearing: boolean;
   setClearing: (value: boolean) => void;
-  
+
   // Settings
   dontOverride: boolean;
   setDontOverride: (value: boolean) => void;
-  
+
   // Logs
   logs: string[];
   setLogs: (value: string[] | ((prev: string[]) => string[])) => void;
   addLog: (message: string) => void;
   isConnected: boolean;
-  
+
   // ZIP selection
-  zipFiles: any[];
-  setZipFiles: (value: any[]) => void;
+  zipFiles: ZipFile[];
+  setZipFiles: (value: ZipFile[]) => void;
   showZipSelection: boolean;
   setShowZipSelection: (value: boolean) => void;
   zipSelectionMode: 'quiz' | 'completion';
   setZipSelectionMode: (value: 'quiz' | 'completion') => void;
-  
+
   // Last processed assignment
-  lastProcessedAssignment: { name: string; className: string; zipPath: string } | null;
-  setLastProcessedAssignment: (value: { name: string; className: string; zipPath: string } | null) => void;
-  
+  lastProcessedAssignment: LastProcessedAssignment | null;
+  setLastProcessedAssignment: (value: LastProcessedAssignment | null) => void;
+
   // Confidence scores
-  confidenceScores: Array<{name: string; grade: string; confidence: number}> | null;
-  setConfidenceScores: (value: Array<{name: string; grade: string; confidence: number}> | null) => void;
-  
+  confidenceScores: ConfidenceScore[] | null;
+  setConfidenceScores: (value: ConfidenceScore[] | null) => void;
+
   // Email students modal
   showEmailModal: boolean;
   setShowEmailModal: (value: boolean) => void;
   emailModalMode: 'all' | 'without-assignment';
   setEmailModalMode: (value: 'all' | 'without-assignment') => void;
-  emailStudents: Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>;
-  setEmailStudents: (value: Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>) => void;
-  
+  emailStudents: EmailStudent[];
+  setEmailStudents: (value: EmailStudent[]) => void;
+
   // Uploaded files
-  uploadedPdfFile: any | null;
-  setUploadedPdfFile: (value: any | null) => void;
-  uploadedPdfFileForExtraction: any | null;
-  setUploadedPdfFileForExtraction: (value: any | null) => void;
+  uploadedPdfFile: UploadedPdfFile | File | null;
+  setUploadedPdfFile: (value: UploadedPdfFile | File | null) => void;
+  uploadedPdfFileForExtraction: UploadedPdfFile | File | null;
+  setUploadedPdfFileForExtraction: (value: UploadedPdfFile | File | null) => void;
   selectedPdfPathForExtraction: string | null;
   setSelectedPdfPathForExtraction: (value: string | null) => void;
-  
+
   // Paths
-  pdfsFolderPath: any | null;
-  setPdfsFolderPath: (value: any | null) => void;
+  pdfsFolderPath: string | null;
+  setPdfsFolderPath: (value: string | null) => void;
   classRosterPath: string | null;
   setClassRosterPath: (value: string | null) => void;
-  
+
   // Clear data states
   showAssignmentSelection: boolean;
   setShowAssignmentSelection: (value: boolean) => void;
-  processingFolders: any[];
-  setProcessingFolders: (value: any[]) => void;
+  processingFolders: ProcessingFolder[];
+  setProcessingFolders: (value: ProcessingFolder[]) => void;
   selectedAssignments: Set<string>;
   setSelectedAssignments: (value: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   wasSelectAllUsed: boolean;
   setWasSelectAllUsed: (value: boolean) => void;
-  
+
   // Modal states
   showConfirmation: boolean;
   setShowConfirmation: (value: boolean) => void;
-  confirmationConfig: any | null;
-  setConfirmationConfig: (value: any | null) => void;
+  confirmationConfig: ConfirmationConfig | null;
+  setConfirmationConfig: (value: ConfirmationConfig | null) => void;
   showClearOptions: boolean;
   setShowClearOptions: (value: boolean) => void;
-  clearOptionsConfig: any | null;
-  setClearOptionsConfig: (value: any | null) => void;
-  
+  clearOptionsConfig: ClearOptionsConfig | null;
+  setClearOptionsConfig: (value: ClearOptionsConfig | null) => void;
+
   // Server status
-  serverStatus: string;
-  setServerStatus: (value: string) => void;
-  
+  serverStatus: ServerStatus;
+  setServerStatus: (value: ServerStatus) => void;
+
   // Helper functions
   reloadClasses: () => Promise<void>;
   requireClass: () => boolean;
@@ -117,29 +129,29 @@ export interface Option2State {
 export function useOption2State(): Option2State {
   // Theme
   const [isDark, setIsDark] = useState(false);
-  
+
   // Class management
   const [selectedClass, setSelectedClass] = useState('');
-  const [classOptions, setClassOptions] = useState<Array<{ value: string; label: string }>>([
+  const [classOptions, setClassOptions] = useState<ClassOption[]>([
     { value: '', label: 'Select Class' }
   ]);
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [showClassSetup, setShowClassSetup] = useState(false);
   const [showPatchManager, setShowPatchManager] = useState(false);
-  
+
   // Processing states
   const [processing, setProcessing] = useState(false);
   const [processingCompletion, setProcessingCompletion] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [splitting, setSplitting] = useState(false);
   const [clearing, setClearing] = useState(false);
-  
+
   // Settings
   const [dontOverride, setDontOverride] = useState(false);
-  
+
   // Logs
   const [logs, setLogs] = useState<string[]>([]);
-  
+
   // Add log function with duplicate filtering
   const addLog = (message: string) => {
     if (message) {
@@ -163,76 +175,76 @@ export function useOption2State(): Option2State {
           '📡 sending',
           '📁 opening'
         ];
-        
+
         if (unwantedPatterns.some(pattern => messageLower.includes(pattern))) {
           return prevLogs;
         }
-        
+
         // Filter out duplicate consecutive messages
         if (prevLogs.length > 0 && prevLogs[prevLogs.length - 1] === message) {
           return prevLogs;
         }
-        
+
         return [...prevLogs, message];
       });
     }
   };
-  
+
   // Connect to SSE log stream
   const { isConnected } = useLogStream(addLog);
-  
+
   // ZIP selection
-  const [zipFiles, setZipFiles] = useState([]);
+  const [zipFiles, setZipFiles] = useState<ZipFile[]>([]);
   const [showZipSelection, setShowZipSelection] = useState(false);
   const [zipSelectionMode, setZipSelectionMode] = useState<'quiz' | 'completion'>('quiz');
-  
+
   // Last processed assignment
-  const [lastProcessedAssignment, setLastProcessedAssignment] = useState<{ name: string; className: string; zipPath: string } | null>(null);
-  
+  const [lastProcessedAssignment, setLastProcessedAssignment] = useState<LastProcessedAssignment | null>(null);
+
   // Confidence scores
-  const [confidenceScores, setConfidenceScores] = useState<Array<{name: string; grade: string; confidence: number}> | null>(null);
-  
+  const [confidenceScores, setConfidenceScores] = useState<ConfidenceScore[] | null>(null);
+
   // Email students modal
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailModalMode, setEmailModalMode] = useState<'all' | 'without-assignment'>('all');
-  const [emailStudents, setEmailStudents] = useState<Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>>([]);
-  
+  const [emailStudents, setEmailStudents] = useState<EmailStudent[]>([]);
+
   // Uploaded files
-  const [uploadedPdfFile, setUploadedPdfFile] = useState<any | null>(null);
-  const [uploadedPdfFileForExtraction, setUploadedPdfFileForExtraction] = useState<any | null>(null);
+  const [uploadedPdfFile, setUploadedPdfFile] = useState<UploadedPdfFile | File | null>(null);
+  const [uploadedPdfFileForExtraction, setUploadedPdfFileForExtraction] = useState<UploadedPdfFile | File | null>(null);
   const [selectedPdfPathForExtraction, setSelectedPdfPathForExtraction] = useState<string | null>(null);
-  
+
   // Paths
-  const [pdfsFolderPath, setPdfsFolderPath] = useState<any | null>(null);
+  const [pdfsFolderPath, setPdfsFolderPath] = useState<string | null>(null);
   const [classRosterPath, setClassRosterPath] = useState<string | null>(null);
-  
+
   // Clear data states
   const [showAssignmentSelection, setShowAssignmentSelection] = useState(false);
-  const [processingFolders, setProcessingFolders] = useState<any[]>([]);
+  const [processingFolders, setProcessingFolders] = useState<ProcessingFolder[]>([]);
   const [selectedAssignments, setSelectedAssignments] = useState<Set<string>>(new Set());
   const [wasSelectAllUsed, setWasSelectAllUsed] = useState(false);
-  
+
   // Modal states
   const [showConfirmation, setShowConfirmation] = useState(false);
-  const [confirmationConfig, setConfirmationConfig] = useState<any | null>(null);
+  const [confirmationConfig, setConfirmationConfig] = useState<ConfirmationConfig | null>(null);
   const [showClearOptions, setShowClearOptions] = useState(false);
-  const [clearOptionsConfig, setClearOptionsConfig] = useState<any | null>(null);
-  
+  const [clearOptionsConfig, setClearOptionsConfig] = useState<ClearOptionsConfig | null>(null);
+
   // Server status
-  const [serverStatus, setServerStatus] = useState('checking');
-  
+  const [serverStatus, setServerStatus] = useState<ServerStatus>('checking');
+
   // Check server status periodically
   useEffect(() => {
     const checkServer = async () => {
       const status = await checkServerStatus(SERVER_CHECK_TIMEOUT_MS);
-      setServerStatus(status);
+      setServerStatus(status as ServerStatus);
     };
-    
+
     checkServer();
     const interval = setInterval(checkServer, SERVER_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
-  
+
   // Load classes on mount
   useEffect(() => {
     const fetchClasses = async () => {
@@ -240,8 +252,8 @@ export function useOption2State(): Option2State {
         const result = await loadClasses();
         if (result.success && result.classes) {
           setClasses(result.classes);
-          
-          const options = [
+
+          const options: ClassOption[] = [
             { value: '', label: 'Select Class' },
             ...result.classes
               .sort((a, b) => a.label.localeCompare(b.label))
@@ -259,17 +271,17 @@ export function useOption2State(): Option2State {
         addLog('👋 Welcome!');
       }
     };
-    
+
     fetchClasses();
   }, []);
-  
+
   // Handler to reload classes
   const reloadClasses = async () => {
     try {
       const result = await loadClasses();
       if (result.success && result.classes) {
         setClasses(result.classes);
-        const options = [
+        const options: ClassOption[] = [
           { value: '', label: 'Select Class' },
           ...result.classes
             .sort((a, b) => a.label.localeCompare(b.label))
@@ -283,7 +295,7 @@ export function useOption2State(): Option2State {
       addLog(`❌ Error loading classes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
-  
+
   // Helper for class validation
   const requireClass = (): boolean => {
     if (!selectedClass) {
@@ -292,7 +304,7 @@ export function useOption2State(): Option2State {
     }
     return true;
   };
-  
+
   return {
     isDark,
     setIsDark,

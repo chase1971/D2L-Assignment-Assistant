@@ -97,13 +97,13 @@ export function formatAssignmentFolderName(assignmentName: string, className: st
  */
 export function displayError(error: string | undefined, addLog: (message: string) => void): void {
   if (!error) return;
-  
+
   // Remove "Error:" prefix if present (case insensitive)
   let cleanError = error.replace(/^Error:\s*/i, '').trim();
-  
+
   // Remove duplicate ❌ at the start if present
   cleanError = cleanError.replace(/^❌\s*❌\s*/, '❌ ');
-  
+
   // Split multi-line errors and display each line
   const errorLines = cleanError.split('\n');
   errorLines.forEach((line, index) => {
@@ -114,7 +114,7 @@ export function displayError(error: string | undefined, addLog: (message: string
       // or already has an emoji prefix
       const hasEmoji = /^[❌✅⚠️📂🔍📦]/.test(trimmed);
       const isContinuation = index > 0 && /^[a-z\s\t]/.test(trimmed);
-      
+
       if (!hasEmoji && !isContinuation) {
         addLog(`❌ ${trimmed}`);
       } else {
@@ -122,4 +122,50 @@ export function displayError(error: string | undefined, addLog: (message: string
       }
     }
   });
+}
+
+/**
+ * Formats an error from various sources into a clean string
+ * @param error - Error object, string, or unknown value
+ * @returns Formatted error message string
+ */
+export function formatErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return 'An unknown error occurred';
+}
+
+/**
+ * Creates a success log message
+ * @param action - What action succeeded
+ * @param details - Optional details to include
+ * @returns Formatted success message
+ */
+export function formatSuccessMessage(action: string, details?: string): string {
+  return details ? `✅ ${action}: ${details}` : `✅ ${action}`;
+}
+
+/**
+ * Creates a warning log message
+ * @param message - Warning message
+ * @returns Formatted warning message
+ */
+export function formatWarningMessage(message: string): string {
+  return `⚠️ ${message}`;
+}
+
+/**
+ * Creates an info log message
+ * @param message - Info message
+ * @returns Formatted info message
+ */
+export function formatInfoMessage(message: string): string {
+  return `ℹ️ ${message}`;
 }

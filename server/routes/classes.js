@@ -12,11 +12,7 @@ const { exec } = require('child_process');
 const router = express.Router();
 
 const { runPythonScript, writeLog } = require('../python-runner');
-
-// Standard API response helper
-function apiResponse(res, { success, logs = [], error = null, ...extra }) {
-  res.json({ success, logs, error: success ? null : error, ...extra });
-}
+const { apiResponse } = require('../helpers/api-response');
 
 // Load all classes
 router.get('/', async (req, res) => {

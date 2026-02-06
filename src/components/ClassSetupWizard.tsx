@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FolderOpen, ArrowRight, ArrowLeft, Check } from 'lucide-react';
 import { selectFolder, addClass, ClassData } from '../services/quizGraderService';
+import type { ElectronAPI } from '../types';
 
 interface ClassSetupWizardProps {
   isDark: boolean;
@@ -58,7 +59,7 @@ export default function ClassSetupWizard({
       setError(''); // Clear any errors
       
       // Check if Electron API is available
-      const electronAPI = (window as any).electronAPI;
+      const electronAPI: ElectronAPI | undefined = window.electronAPI;
       
       if (electronAPI?.showOpenDialog) {
         // Use Electron's native dialog
