@@ -10,11 +10,7 @@ const router = express.Router();
 
 const { loadConfig, saveConfig } = require('../config');
 const sseLogger = require('../../sse-logger');
-
-// Standard API response helper
-function apiResponse(res, { success, logs = [], error = null, ...extra }) {
-  res.json({ success, logs, error: success ? null : error, ...extra });
-}
+const { apiResponse } = require('../helpers/api-response');
 
 // SSE log stream endpoint
 router.get('/logs/stream', sseLogger.handleSseConnection);

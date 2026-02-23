@@ -13,11 +13,7 @@ const router = express.Router();
 
 const patchManager = require('../../patch-manager');
 const { writeLog } = require('../python-runner');
-
-// Standard API response helper
-function apiResponse(res, { success, logs = [], error = null, ...extra }) {
-  res.json({ success, logs, error: success ? null : error, ...extra });
-}
+const { apiResponse } = require('../helpers/api-response');
 
 // Get patch status
 router.get('/status', async (req, res) => {

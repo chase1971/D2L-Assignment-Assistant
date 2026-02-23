@@ -3,6 +3,8 @@
  * All business logic and event handlers
  */
 
+import React from 'react';
+import type { ElectronDialogOptions, ElectronDialogResult } from '../../types';
 import {
   processQuizzes,
   processSelectedQuiz,
@@ -28,7 +30,7 @@ import {
 } from '../utils/assignmentUtils';
 
 export interface Option2Actions {
-  handleClassChange: (e: any) => Promise<void>;
+  handleClassChange: (e: React.ChangeEvent<HTMLSelectElement>) => Promise<void>;
   handleOpenDownloads: () => Promise<void>;
   handleProcessQuizzes: () => Promise<void>;
   handleZipSelection: (zipPath: string) => Promise<void>;
@@ -128,7 +130,7 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
   };
 
   // Handle class selection
-  const handleClassChange = async (e: any) => {
+  const handleClassChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newClass = e.target.value;
     state.setSelectedClass(newClass);
     setPdfsFolderPath(null);
@@ -416,7 +418,7 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     if (!requireClass()) return;
 
     try {
-      if ((window as any).electronAPI?.showOpenDialog) {
+      if (window.electronAPI?.showOpenDialog) {
         let pathInfo = pdfsFolderPath;
         if (!pathInfo) {
           pathInfo = await getPdfsFolderPath(drive, selectedClass);
@@ -424,34 +426,34 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
             setPdfsFolderPath(pathInfo);
           }
         }
-        
-        const dialogOptions: any = {
+
+        const dialogOptions: ElectronDialogOptions = {
           filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
           properties: ['openFile']
         };
-        
+
         if (pathInfo && pathInfo.existingPath) {
           dialogOptions.defaultPath = pathInfo.existingPath;
         }
-        
-        const result = await (window as any).electronAPI.showOpenDialog(dialogOptions);
-        
+
+        const result = await window.electronAPI.showOpenDialog(dialogOptions);
+
         if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
           const filePath = result.filePaths[0];
           const fileName = filePath.split(/[/\\]/).pop() || '';
           addLog(`📄 Selected PDF for extraction: ${fileName}`);
-          
+
           setSelectedPdfPathForExtraction(filePath);
-          
+
           const rawAssignmentName = fileName.replace(/\.pdf$/i, '').trim();
           const displayName = formatAssignmentDisplayName(rawAssignmentName, selectedClass);
-          
+
           setLastProcessedAssignment({
             name: displayName,
             className: selectedClass,
             zipPath: filePath
           });
-          
+
           addLog(`✅ PDF set for extraction. Click "EXTRACT GRADES" to process.`);
         }
       } else {
@@ -459,8 +461,9 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.pdf';
-        input.onchange = async (e: any) => {
-          const file = e.target.files?.[0];
+        input.onchange = async (e: Event) => {
+          const target = e.target as HTMLInputElement;
+          const file = target.files?.[0];
           if (file) {
             addLog(`📄 Selected PDF for extraction: ${file.name}`);
             setUploadedPdfFileForExtraction(file);
@@ -486,7 +489,7 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     if (!requireClass()) return;
 
     try {
-      if ((window as any).electronAPI?.showOpenDialog) {
+      if (window.electronAPI?.showOpenDialog) {
         let pathInfo = pdfsFolderPath;
         if (!pathInfo) {
           pathInfo = await getPdfsFolderPath(drive, selectedClass);
@@ -494,17 +497,17 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
             setPdfsFolderPath(pathInfo);
           }
         }
-        
-        const dialogOptions: any = {
+
+        const dialogOptions: ElectronDialogOptions = {
           filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
           properties: ['openFile']
         };
-        
+
         if (pathInfo && pathInfo.existingPath) {
           dialogOptions.defaultPath = pathInfo.existingPath;
         }
-        
-        const result = await (window as any).electronAPI.showOpenDialog(dialogOptions);
+
+        const result = await window.electronAPI.showOpenDialog(dialogOptions);
         
         if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
           const filePath = result.filePaths[0];
@@ -527,8 +530,9 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.pdf';
-        input.onchange = async (e: any) => {
-          const file = e.target.files?.[0];
+        input.onchange = async (e: Event) => {
+          const target = e.target as HTMLInputElement;
+          const file = target.files?.[0];
           if (file) {
             addLog(`📄 Selected: ${file.name}`);
             setUploadedPdfFile(file);

@@ -1,5 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Mail, X, CheckSquare, Square } from 'lucide-react';
+import { Mail, CheckSquare, Square } from 'lucide-react';
+import BaseModal from './BaseModal';
+import MetalButton from './MetalButton';
+import { DARK_THEME } from './constants/ui-constants';
 
 interface Student {
   name: string;
@@ -12,11 +15,11 @@ interface EmailStudentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   students: Student[];
-  mode: 'all' | 'without-assignment'; // 'all' or 'without-assignment'
+  mode: 'all' | 'without-assignment';
   onEmail: (selectedStudents: string[]) => void;
   isDark: boolean;
-  metalButtonClass: (isDark: boolean) => string;
-  metalButtonStyle: (isDark: boolean) => React.CSSProperties | undefined;
+  metalButtonClass?: (isDark: boolean) => string;
+  metalButtonStyle?: (isDark: boolean) => React.CSSProperties | undefined;
 }
 
 export default function EmailStudentsModal({
@@ -26,8 +29,6 @@ export default function EmailStudentsModal({
   mode,
   onEmail,
   isDark,
-  metalButtonClass,
-  metalButtonStyle,
 }: EmailStudentsModalProps) {
   // Helper function to capitalize names properly
   const capitalizeName = (name: string): string => {
@@ -37,20 +38,13 @@ export default function EmailStudentsModal({
       .join(' ');
   };
 
-
   // Reorder students to flow down columns instead of across rows
-  // For 3 columns with items [A,B,C,D,E,F,G,H,I,J,K,L]:
-  // We want: A,E,I in row 1, B,F,J in row 2, C,G,K in row 3, D,H,L in row 4
-  // So the array should be: [A,E,I,B,F,J,C,G,K,D,H,L]
   const reorderForColumns = (items: Student[], numColumns: number): Student[] => {
     if (items.length === 0 || numColumns <= 1) return items;
-    
+
     const numRows = Math.ceil(items.length / numColumns);
     const reordered: Student[] = [];
-    
-    // Fill row by row, but each row contains items from different columns
-    // Row 0: items[0], items[numRows], items[2*numRows], ...
-    // Row 1: items[1], items[numRows+1], items[2*numRows+1], ...
+
     for (let row = 0; row < numRows; row++) {
       for (let col = 0; col < numColumns; col++) {
         const index = row + col * numRows;
@@ -59,18 +53,15 @@ export default function EmailStudentsModal({
         }
       }
     }
-    
+
     return reordered;
   };
-
 
   // Initialize selected students based on mode
   const initialSelected = useMemo(() => {
     if (mode === 'all') {
-      // All students checked by default
       return new Set(students.map(s => s.name));
     } else {
-      // Only students without assignment checked
       return new Set(students.filter(s => !s.hasAssignment).map(s => s.name));
     }
   }, [students, mode]);
@@ -86,13 +77,13 @@ export default function EmailStudentsModal({
     }
   }, [mode, students]);
 
-  // Calculate breakdown of selected students for tooltip (must be before early return for hooks rules)
+  // Calculate breakdown of selected students for tooltip
   const selectedStudentObjects = students.filter(s => selectedStudents.has(s.name));
   const unreadableCount = selectedStudentObjects.filter(s => s.isUnreadable).length;
   const noSubmissionCount = selectedStudentObjects.filter(s => !s.hasAssignment && !s.isUnreadable).length;
   const hasAssignmentCount = selectedStudentObjects.filter(s => s.hasAssignment).length;
   const noneSelected = selectedStudents.size === 0;
-  
+
   const tooltipText = React.useMemo(() => {
     if (noneSelected) {
       return 'Select students to email';
@@ -102,8 +93,6 @@ export default function EmailStudentsModal({
            `  • ${noSubmissionCount} no submission\n` +
            `  • ${unreadableCount} unreadable`;
   }, [selectedStudents.size, hasAssignmentCount, noSubmissionCount, unreadableCount, noneSelected]);
-
-  if (!isOpen) return null;
 
   const allSelected = students.length > 0 && students.every(student => selectedStudents.has(student.name));
 
@@ -129,14 +118,14 @@ export default function EmailStudentsModal({
 
   const handleEmail = async () => {
     const selectedNames = Array.from(selectedStudents);
-    
+
     // Get emails for selected students
     const selectedStudentObjects = students.filter(s => selectedStudents.has(s.name));
     const emails = selectedStudentObjects
       .map(s => s.email)
       .filter(email => email && email.trim() !== '')
-      .join('; '); // Use semicolon separator for Outlook
-    
+      .join('; ');
+
     // Copy emails to clipboard
     if (emails) {
       try {
@@ -144,7 +133,6 @@ export default function EmailStudentsModal({
         console.log('Emails copied to clipboard:', emails);
       } catch (error) {
         console.error('Failed to copy emails to clipboard:', error);
-        // Fallback: try using a textarea element
         const textarea = document.createElement('textarea');
         textarea.value = emails;
         textarea.style.position = 'fixed';
@@ -160,7 +148,7 @@ export default function EmailStudentsModal({
         document.body.removeChild(textarea);
       }
     }
-    
+
     // Launch Firefox with Outlook URL
     try {
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -169,7 +157,7 @@ export default function EmailStudentsModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('Failed to launch Firefox:', errorData.error || 'Unknown error');
@@ -177,107 +165,51 @@ export default function EmailStudentsModal({
     } catch (error) {
       console.error('Error launching Firefox:', error);
     }
-    
-    // Call the onEmail callback
+
     onEmail(selectedNames);
   };
 
-  const modalTitle = mode === 'all' 
-    ? 'EMAIL ALL STUDENTS' 
-    : 'EMAIL STUDENTS WITHOUT ASSIGNMENT';
+  const modalTitle = mode === 'all'
+    ? `EMAIL ALL STUDENTS (${students.length} students)`
+    : `EMAIL STUDENTS WITHOUT ASSIGNMENT (${students.length} students)`;
 
   return (
-    <div 
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 999999,
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div 
-        style={{
-          width: '900px',
-          maxWidth: '95vw',
-          maxHeight: '80vh',
-          backgroundColor: isDark ? '#1a2942' : '#d0d0d4',
-          borderRadius: '12px',
-          border: isDark ? '2px solid #3a4962' : '2px solid #888',
-          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div 
-          style={{
-            padding: '16px 20px',
-            backgroundColor: isDark ? '#0f1729' : '#c0c0c4',
-            borderBottom: isDark ? '2px solid #3a4962' : '2px solid #999',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Mail className={isDark ? 'text-cyan-400' : 'text-[#1a2942]'} size={20} />
-            <span style={{ 
-              fontWeight: 'bold', 
-              fontSize: '14px',
-              color: isDark ? '#fff' : '#1a2942'
-            }}>
-              {modalTitle}
-            </span>
-            <span style={{ 
-              fontSize: '12px',
-              color: isDark ? '#888' : '#666'
-            }}>
-              ({students.length} students)
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '4px',
-              borderRadius: '4px',
-              border: 'none',
-              backgroundColor: 'transparent',
-              cursor: 'pointer',
-              color: isDark ? '#888' : '#666',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.color = '#ff4444'}
-            onMouseLeave={(e) => e.currentTarget.style.color = isDark ? '#888' : '#666'}
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      isDark={isDark}
+      title={modalTitle}
+      icon={Mail}
+      iconColor={isDark ? '#22d3ee' : '#1a2942'}
+      width="900px"
+      maxHeight="80vh"
+      footer={
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <MetalButton onClick={onClose} isDark={isDark} className="flex-1">
+            CANCEL
+          </MetalButton>
+          <MetalButton
+            onClick={handleEmail}
+            isDark={isDark}
+            disabled={noneSelected}
+            className="flex-1"
+            title={tooltipText}
           >
-            <X size={20} />
-          </button>
+            EMAIL ({selectedStudents.size})
+          </MetalButton>
         </div>
-
+      }
+    >
+      <div style={{ margin: '-20px', marginBottom: '-20px' }}>
         {/* Select All / Deselect All Bar */}
         <div
           style={{
             padding: '10px 20px',
-            backgroundColor: isDark ? '#0f1729' : '#b8b8bc',
-            borderBottom: isDark ? '1px solid #2a3952' : '1px solid #999',
+            backgroundColor: isDark ? DARK_THEME.bgSecondary : '#b8b8bc',
+            borderBottom: isDark ? `1px solid ${DARK_THEME.bgQuaternary}` : '1px solid #999',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            flexShrink: 0,
             gap: '12px',
           }}
         >
@@ -287,25 +219,20 @@ export default function EmailStudentsModal({
           }}>
             {selectedStudents.size} selected
           </span>
-          <button
+          <MetalButton
             onClick={handleSelectAll}
-            className={`px-3 py-1.5 text-xs rounded border font-medium ${metalButtonClass(isDark)}`}
-            style={{
-              ...metalButtonStyle(isDark),
-              fontSize: '12px',
-              padding: '6px 12px',
-            }}
+            isDark={isDark}
+            style={{ fontSize: '12px', padding: '6px 12px' }}
           >
             {allSelected ? 'Deselect All' : 'Select All'}
-          </button>
+          </MetalButton>
         </div>
 
         {/* Scrollable Student List */}
-        <div 
+        <div
           style={{
-            flex: 1,
             overflowY: 'auto',
-            backgroundColor: isDark ? '#0f1729' : '#b8b8bc',
+            backgroundColor: isDark ? DARK_THEME.bgSecondary : '#b8b8bc',
             maxHeight: 'calc(80vh - 220px)',
             padding: '8px',
           }}
@@ -340,7 +267,7 @@ export default function EmailStudentsModal({
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
-                      backgroundColor: isSelected 
+                      backgroundColor: isSelected
                         ? (isDark ? 'rgba(0, 200, 255, 0.2)' : 'rgba(100, 150, 255, 0.2)')
                         : 'transparent',
                       border: 'none',
@@ -362,18 +289,18 @@ export default function EmailStudentsModal({
                     {/* Checkbox Icon */}
                     <div style={{ flexShrink: 0 }}>
                       {isSelected ? (
-                        <CheckSquare 
-                          size={18} 
-                          style={{ color: isDark ? '#00c8ff' : '#1a2942' }} 
+                        <CheckSquare
+                          size={18}
+                          style={{ color: isDark ? '#00c8ff' : '#1a2942' }}
                         />
                       ) : (
-                        <Square 
-                          size={18} 
-                          style={{ color: isDark ? '#666' : '#999' }} 
+                        <Square
+                          size={18}
+                          style={{ color: isDark ? '#666' : '#999' }}
                         />
                       )}
                     </div>
-                    
+
                     {/* Student Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
@@ -389,13 +316,13 @@ export default function EmailStudentsModal({
                       {!student.hasAssignment && (
                         <div style={{
                           fontSize: '10px',
-                          color: student.isUnreadable 
+                          color: student.isUnreadable
                             ? (isDark ? '#ffaa00' : '#cc8800')
                             : (isDark ? '#ff6b6b' : '#cc0000'),
                           fontStyle: 'italic',
                           marginTop: '2px',
                         }}
-                        title={student.isUnreadable 
+                        title={student.isUnreadable
                           ? 'Unreadable submission (treated as no submission)'
                           : 'No submission'
                         }
@@ -410,40 +337,7 @@ export default function EmailStudentsModal({
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <div 
-          style={{
-            padding: '16px 20px',
-            backgroundColor: isDark ? '#1a2942' : '#c0c0c4',
-            borderTop: isDark ? '2px solid #3a4962' : '2px solid #999',
-            flexShrink: 0,
-            display: 'flex',
-            gap: '10px',
-          }}
-        >
-          <button
-            onClick={onClose}
-            className={`flex-1 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-lg ${metalButtonClass(isDark)}`}
-            style={metalButtonStyle(isDark)}
-          >
-            CANCEL
-          </button>
-          <button
-            onClick={handleEmail}
-            disabled={noneSelected}
-            className={`flex-1 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-lg ${metalButtonClass(isDark)}`}
-            style={{
-              ...metalButtonStyle(isDark),
-              opacity: noneSelected ? 0.5 : 1,
-              cursor: noneSelected ? 'not-allowed' : 'pointer',
-            }}
-            title={tooltipText}
-          >
-            EMAIL ({selectedStudents.size})
-          </button>
-        </div>
       </div>
-    </div>
+    </BaseModal>
   );
 }

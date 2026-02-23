@@ -1,5 +1,17 @@
 # D2L Assignment Assistant - Cursor Rules
 
+## 🚨 CRITICAL: Read This First
+
+**Before making ANY changes to this codebase, read `START_HERE.md` in this directory.**
+
+**Why?**
+- Explains user-specific configuration (drive detection)
+- Points to all documentation
+- Shows folder structure requirements
+- Lists safe vs fragile areas
+
+---
+
 ## Project Overview
 This is a desktop application for grading D2L/Brightspace assignment submissions. It has a React frontend, Node.js backend (server.js), and Python scripts for PDF processing and grade extraction.
 

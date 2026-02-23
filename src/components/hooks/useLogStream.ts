@@ -42,7 +42,7 @@ export function useLogStream(addLog: (message: string) => void) {
         eventSource.onmessage = (event) => {
           try {
             const data: LogStreamEvent = JSON.parse(event.data);
-            
+
             if (data.type === 'connected') {
               console.log('[SSE] Connection confirmed');
             } else if (data.type === 'log') {
@@ -66,12 +66,12 @@ export function useLogStream(addLog: (message: string) => void) {
           console.error('[SSE] Connection error:', error);
           setIsConnected(false);
           eventSource.close();
-          
+
           // Attempt to reconnect with exponential backoff
           if (reconnectAttempts < maxReconnectAttempts) {
             const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
             console.log(`[SSE] Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
-            
+
             reconnectTimeout = setTimeout(() => {
               setReconnectAttempts(prev => prev + 1);
               connect();

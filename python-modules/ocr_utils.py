@@ -17,8 +17,15 @@ from grading_constants import (
     CONTRAST_ENHANCE_FINAL,
 )
 
-# Google Cloud Vision API Key
-GOOGLE_VISION_API_KEY = "AIzaSyDWBzzSzj1YVCpEbr-P0PkriqrFuKL_ySs"
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, continue anyway
+
+# Google Cloud Vision API Key - loaded from environment variable
+GOOGLE_VISION_API_KEY = os.getenv("GOOGLE_VISION_API_KEY", "")
 
 # Try to import Tesseract
 try:
