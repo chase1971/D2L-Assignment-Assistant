@@ -297,7 +297,7 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, process
             log("SPLIT_UNZIPPED_NOT_FOUND")
             return False, None
         
-        log(f"📦 Creating ZIP file: {original_zip_name}")
+        log("SPLIT_CREATING_ZIP_FILE", filename=original_zip_name)
         # Create new ZIP file in grade processing folder
         new_zip_path = os.path.join(processing_folder, original_zip_name)
         
@@ -353,19 +353,19 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, process
         
         with zipfile.ZipFile(new_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             # First, add index.html to the root of the ZIP
-            log("   📝 Adding index.html...")
+            log("SPLIT_ADDING_INDEX")
             zip_file_to_add = temp_index if os.path.exists(temp_index) else index_html_path
             zipf.write(zip_file_to_add, 'index.html')
             
             # Add any other root-level files that were in the original ZIP
             if other_files:
-                log(f"   📄 Adding {len(other_files)} root files...")
+                log("SPLIT_ADDING_ROOT_FILES", count=len(other_files))
                 for other_file in other_files:
                     file_name = os.path.basename(other_file)
                     zipf.write(other_file, file_name)
             
             # Add all student folders to the ZIP
-            log(f"   📁 Adding {len(student_folders)} student folders...")
+            log("SPLIT_ADDING_STUDENT_FOLDERS", count=len(student_folders))
             for folder_path in student_folders:
                 folder_name = os.path.basename(folder_path)
                 # Add the entire folder to the ZIP
@@ -376,7 +376,7 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, process
                         arcname = os.path.relpath(file_path, unzipped_folder)
                         zipf.write(file_path, arcname)
         
-        log_raw("   ⏳ Finalizing ZIP file...", "INFO")
+        log("SPLIT_FINALIZING_ZIP")
         
         # Ensure ZIP is fully written and closed
         import time
@@ -391,10 +391,10 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, process
             with open(new_zip_path, 'rb') as test_file:
                 test_file.read(100)  # Read a bit to verify it's accessible
         except Exception as e:
-            log_raw(f"   ⚠️ Warning: ZIP file may be locked: {e}", "WARNING")
+            log("SPLIT_ZIP_LOCKED_WARNING", error=str(e))
         
-        log_raw(f"   ✓ ZIP created: {os.path.basename(new_zip_path)}", "INFO")
-        log_raw("   ✓ File is ready for upload", "INFO")
+        log("SPLIT_ZIP_CREATED", filename=os.path.basename(new_zip_path))
+        log("SPLIT_ZIP_READY")
         return True, new_zip_path
         
     except Exception as e:

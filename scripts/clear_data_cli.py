@@ -352,8 +352,38 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
         else:
             log("ERR_CLEAR_FAILED_DELETE")
             return False
+    elif save_mode == 'delete_everything':
+        # Delete the entire folder completely (for selected folders)
+        # This is the same as delete_all_with_archived - removes both processing and archived
+        if safe_remove_tree(folder_path):
+            log("CLEAR_DELETED", folder_name=folder_name)
+            
+            # Also delete corresponding archived folder if it exists
+            match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
+            if match:
+                assignment_name = match.group(1)
+                archived_folder_name = f"archived {assignment_name}"
+                archived_folder_path = os.path.join(parent_folder, archived_folder_name)
+                if os.path.exists(archived_folder_path):
+                    if safe_remove_tree(archived_folder_path):
+                        log("CLEAR_DELETED", folder_name=archived_folder_name)
+            
+            # Also handle if this IS an archived folder
+            match = re.match(r'^archived (.+)$', folder_name, re.IGNORECASE)
+            if match:
+                assignment_name = match.group(1)
+                processing_folder_name = f"grade processing {assignment_name}"
+                processing_folder_path = os.path.join(parent_folder, processing_folder_name)
+                if os.path.exists(processing_folder_path):
+                    if safe_remove_tree(processing_folder_path):
+                        log("CLEAR_DELETED", folder_name=processing_folder_name)
+            
+            return True
+        else:
+            log("ERR_CLEAR_FAILED_DELETE")
+            return False
     else:
-        # delete_everything mode - handled separately in main()
+        log("ERR_UNKNOWN_MODE", mode=save_mode)
         return False
 
 
@@ -494,39 +524,6 @@ def main():
             log("ERR_NO_FOLDER")
             sys.exit(1)
         
-        # Handle delete_everything mode separately (doesn't need assignment_name)
-        if save_mode == 'delete_everything':
-            # Delete ALL grade processing folders AND ALL archived folders
-            log("CLEAR_MODE_EVERYTHING")
-            
-            deleted_count = 0
-            
-            # Delete all grade processing folders
-            processing_pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
-            for folder_name in os.listdir(class_folder):
-                folder_path = os.path.join(class_folder, folder_name)
-                if os.path.isdir(folder_path):
-                    if processing_pattern.match(folder_name):
-                        if safe_remove_tree(folder_path):
-                            log("CLEAR_DELETED", folder_name=folder_name)
-                            deleted_count += 1
-            
-            # Delete all archived folders
-            archived_pattern = re.compile(r'^archived (.+)$', re.IGNORECASE)
-            for folder_name in os.listdir(class_folder):
-                folder_path = os.path.join(class_folder, folder_name)
-                if os.path.isdir(folder_path):
-                    if archived_pattern.match(folder_name):
-                        if safe_remove_tree(folder_path):
-                            log("CLEAR_DELETED", folder_name=folder_name)
-                            deleted_count += 1
-            
-            if deleted_count > 0:
-                log("CLEAR_SUCCESS")
-            else:
-                log("CLEAR_NO_FOLDERS")
-            sys.exit(0)
-        
         # Find the target processing folder
         if assignment_name:
             # Check if assignment_name already includes the prefix
@@ -588,39 +585,6 @@ def main():
             log("ERR_NO_ASSIGNMENTS")
             sys.exit(1)
         
-        # Handle delete_everything mode separately
-        if save_mode == 'delete_everything':
-            # Delete ALL grade processing folders AND ALL archived folders
-            log("CLEAR_MODE_EVERYTHING")
-            
-            deleted_count = 0
-            
-            # Delete all grade processing folders
-            processing_pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
-            for folder_name in os.listdir(class_folder):
-                folder_path = os.path.join(class_folder, folder_name)
-                if os.path.isdir(folder_path):
-                    if processing_pattern.match(folder_name):
-                        if safe_remove_tree(folder_path):
-                            log("CLEAR_DELETED", folder_name=folder_name)
-                            deleted_count += 1
-            
-            # Delete all archived folders
-            archived_pattern = re.compile(r'^archived (.+)$', re.IGNORECASE)
-            for folder_name in os.listdir(class_folder):
-                folder_path = os.path.join(class_folder, folder_name)
-                if os.path.isdir(folder_path):
-                    if archived_pattern.match(folder_name):
-                        if safe_remove_tree(folder_path):
-                            log("CLEAR_DELETED", folder_name=folder_name)
-                            deleted_count += 1
-            
-            if deleted_count > 0:
-                log("CLEAR_SUCCESS")
-            else:
-                log("CLEAR_NO_FOLDERS")
-            sys.exit(0)
-        
         # Clear the data for specific assignment
         log("CLEAR_TARGET_FOLDER", folder_name=os.path.basename(processing_folder))
         if save_mode == 'save_folders_and_pdf':
@@ -628,6 +592,9 @@ def main():
         elif save_mode == 'save_combined_pdf':
             # Add log message for this mode
             pass  # No specific log message for this, just proceed
+        elif save_mode == 'delete_everything':
+            # Delete everything in THIS specific folder
+            log("CLEAR_MODE_FULL")
         else:
             log("CLEAR_MODE_FULL")
         

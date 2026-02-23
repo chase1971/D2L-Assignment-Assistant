@@ -64,7 +64,8 @@ def main():
             "success": True,
             "message": "Quiz processing completed",
             "combined_pdf_path": result.combined_pdf_path if result and hasattr(result, 'combined_pdf_path') else None,
-            "assignment_name": result.assignment_name if result and hasattr(result, 'assignment_name') else None
+            "assignment_name": result.assignment_name if result and hasattr(result, 'assignment_name') else None,
+            "no_submission": result.no_submission if result and hasattr(result, 'no_submission') else []
         }
         print(json.dumps(response))
         

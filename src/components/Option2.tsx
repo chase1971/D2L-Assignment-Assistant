@@ -6,6 +6,7 @@ import ConfirmationModal from './ConfirmationModal';
 import ClearOptionsModal from './ClearOptionsModal';
 import ClassSetupModal from './ClassSetupModal';
 import EmailStudentsModal from './EmailStudentsModal';
+import StudentStatisticsModal from './StudentStatisticsModal';
 import PatchManager from './PatchManager';
 import ActionCard from './ActionCard';
 import LogTerminal from './LogTerminal';
@@ -131,6 +132,19 @@ export default function Option2() {
           state.addLog(`📧 Email functionality will be implemented later. Selected ${selectedStudents.length} students.`);
           state.setShowEmailModal(false);
         }}
+        isDark={state.isDark}
+        metalButtonClass={metalButtonClass}
+        metalButtonStyle={metalButtonStyle}
+      />
+
+      {/* Student Statistics Modal */}
+      <StudentStatisticsModal
+        isOpen={state.showStatisticsModal}
+        onClose={() => state.setShowStatisticsModal(false)}
+        students={state.statisticsStudents}
+        onUpdateNotes={actions.handleUpdateStudentNotes}
+        onUpdateCount={actions.handleUpdateFailedSubmissionCount}
+        onRefresh={actions.handleShowStatistics}
         isDark={state.isDark}
         metalButtonClass={metalButtonClass}
         metalButtonStyle={metalButtonStyle}
@@ -329,12 +343,36 @@ export default function Option2() {
                   EMAIL ALL
                 </MetalButton>
                 
+                <div className="relative">
+                  <MetalButton
+                    onClick={actions.handleEmailWithoutAssignment}
+                    disabled={!state.selectedClass}
+                    isDark={state.isDark}
+                  >
+                    EMAIL STUDENTS WITHOUT ASSIGNMENT
+                  </MetalButton>
+                  {state.studentsWithoutSubmission.length > 0 && (
+                    <div 
+                      className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full min-w-6 h-6 flex items-center justify-center px-1.5 shadow-lg border-2 border-white"
+                      style={{ zIndex: 10 }}
+                      title={`${state.studentsWithoutSubmission.length} student(s) without submission`}
+                    >
+                      {state.studentsWithoutSubmission.length}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </ActionCard>
+
+            {/* Statistics */}
+            <ActionCard title="STATISTICS" isDark={state.isDark}>
+              <div className="space-y-2">
                 <MetalButton
-                  onClick={actions.handleEmailWithoutAssignment}
+                  onClick={actions.handleShowStatistics}
                   disabled={!state.selectedClass}
                   isDark={state.isDark}
                 >
-                  EMAIL STUDENTS WITHOUT ASSIGNMENT
+                  📊 VIEW STUDENT STATISTICS
                 </MetalButton>
               </div>
             </ActionCard>

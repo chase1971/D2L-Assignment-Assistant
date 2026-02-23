@@ -82,6 +82,10 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     setShowEmailModal,
     setEmailModalMode,
     setEmailStudents,
+    setStudentsWithoutSubmission,
+    studentsWithoutSubmission,
+    setShowStatisticsModal,
+    setStatisticsStudents,
     requireClass,
     processing,
     processingCompletion,
@@ -217,6 +221,16 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
       
       if (result.success) {
         // Success message already logged
+        // Store students without submission if available
+        if (result.students_without_submission && result.students_without_submission.length > 0) {
+          setStudentsWithoutSubmission(result.students_without_submission);
+          addLog(`⚠️ ${result.students_without_submission.length} student(s) did not submit:`);
+          result.students_without_submission.forEach((name: string) => {
+            addLog(`   • ${name}`);
+          });
+        } else {
+          setStudentsWithoutSubmission([]);
+        }
       } else if (result.error === 'Multiple ZIP files found') {
         setZipFiles(result.zip_files || []);
         setZipSelectionMode('quiz');
@@ -254,6 +268,17 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
           className: selectedClass,
           zipPath: zipPath
         });
+        
+        // Store students without submission if available
+        if (result.students_without_submission && result.students_without_submission.length > 0) {
+          setStudentsWithoutSubmission(result.students_without_submission);
+          addLog(`⚠️ ${result.students_without_submission.length} student(s) did not submit:`);
+          result.students_without_submission.forEach((name: string) => {
+            addLog(`   • ${name}`);
+          });
+        } else {
+          setStudentsWithoutSubmission([]);
+        }
       } else {
         displayError(result.error, addLog);
       }
@@ -771,11 +796,13 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
       let successCount = 0;
       let failCount = 0;
       
-      if (deleteEverything) {
+      // Process each selected assignment individually
+      // This ensures only the selected folders are cleared, regardless of the clear option
+      for (const assignmentName of assignmentsList) {
         const result = await clearAllData(
           drive, 
           selectedClass, 
-          assignmentsList[0] as string,
+          assignmentName as string, 
           saveFoldersAndPdf, 
           saveCombinedPdf,
           deleteEverything,
@@ -784,30 +811,10 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         );
         
         if (result.success) {
-          successCount = assignmentsList.length;
+          successCount++;
         } else {
-          failCount = assignmentsList.length;
-          displayError(`  ❌ Failed: ${result.error || 'Unknown error'}`, addLog);
-        }
-      } else {
-        for (const assignmentName of assignmentsList) {
-          const result = await clearAllData(
-            drive, 
-            selectedClass, 
-            assignmentName as string, 
-            saveFoldersAndPdf, 
-            saveCombinedPdf,
-            deleteEverything,
-            deleteArchivedToo,
-            addLog
-          );
-          
-          if (result.success) {
-            successCount++;
-          } else {
-            failCount++;
-            displayError(`  ❌ Failed: ${result.error || 'Unknown error'}`, addLog);
-          }
+          failCount++;
+          displayError(`  ❌ Failed to clear ${assignmentName}: ${result.error || 'Unknown error'}`, addLog);
         }
       }
       
@@ -881,12 +888,92 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     if (!selectedClass) return;
     addLog('📧 Loading students without assignment...');
     try {
-      const students = await loadStudentsForEmail();
-      setEmailStudents(students);
+      // First, load all students from the import file to get email addresses
+      const allStudents = await loadStudentsForEmail();
+      
+      // If we have tracked students without submission from process quizzes, use those
+      if (studentsWithoutSubmission.length > 0) {
+        // Filter the students list to only include those in studentsWithoutSubmission
+        const studentsWithoutAssignment = allStudents.map(student => {
+          // Check if this student is in the studentsWithoutSubmission list
+          const didNotSubmit = studentsWithoutSubmission.some(name => 
+            name.toLowerCase() === student.name.toLowerCase()
+          );
+          
+          // Mark them as not having assignment if they didn't submit
+          return {
+            ...student,
+            hasAssignment: !didNotSubmit
+          };
+        });
+        
+        setEmailStudents(studentsWithoutAssignment);
+        addLog(`✅ Loaded ${studentsWithoutAssignment.filter(s => !s.hasAssignment).length} students without submission`);
+      } else {
+        // Fall back to reading from import file (for backwards compatibility)
+        setEmailStudents(allStudents);
+      }
+      
       setEmailModalMode('without-assignment');
       setShowEmailModal(true);
     } catch (error) {
       addLog(`❌ Error loading students: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Show statistics modal
+  const handleShowStatistics = async () => {
+    if (!selectedClass) return;
+    addLog('📊 Loading statistics...');
+    try {
+      const { loadStatistics } = await import('../../services/statisticsService');
+      const result = await loadStatistics(selectedClass, addLog);
+      
+      if (result.success && result.students) {
+        setStatisticsStudents(result.students);
+        setShowStatisticsModal(true);
+        addLog(`✅ Loaded statistics for ${result.students.length} students`);
+      } else {
+        addLog(`❌ Error loading statistics: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      addLog(`❌ Error loading statistics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Update student notes
+  const handleUpdateStudentNotes = async (studentName: string, notes: string) => {
+    if (!selectedClass) return;
+    try {
+      const { updateStudentNotes } = await import('../../services/statisticsService');
+      const result = await updateStudentNotes(selectedClass, studentName, notes, addLog);
+      
+      if (result.success) {
+        // Refresh statistics
+        await handleShowStatistics();
+      } else {
+        addLog(`❌ Error updating notes: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      addLog(`❌ Error updating notes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Update failed submission count
+  const handleUpdateFailedSubmissionCount = async (studentName: string, count: number) => {
+    if (!selectedClass) return;
+    try {
+      const { updateFailedSubmissionCount } = await import('../../services/statisticsService');
+      const result = await updateFailedSubmissionCount(selectedClass, studentName, count, addLog);
+      
+      if (result.success) {
+        // Refresh statistics
+        await handleShowStatistics();
+      } else {
+        addLog(`❌ Error updating count: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      addLog(`❌ Error updating count: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -914,6 +1001,9 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     handleDeselectAll,
     handleEmailAll,
     handleEmailWithoutAssignment,
-    loadStudentsForEmail
+    loadStudentsForEmail,
+    handleShowStatistics,
+    handleUpdateStudentNotes,
+    handleUpdateFailedSubmissionCount
   };
 }

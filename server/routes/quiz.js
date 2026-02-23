@@ -81,8 +81,9 @@ router.post('/process', async (req, res) => {
     apiResponse(res, {
       success: result.success,
       logs: getUserLogs(result),
-      combined_pdf_path: result.data?.combined_pdf_path,
-      assignment_name: result.data?.assignment_name,
+      combined_pdf_path: result.combined_pdf_path,
+      assignment_name: result.assignment_name,
+      students_without_submission: result.no_submission,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
@@ -109,8 +110,9 @@ router.post('/process-selected', async (req, res) => {
     apiResponse(res, {
       success: result.success,
       logs: getUserLogs(result),
-      combined_pdf_path: result.data?.combined_pdf_path,
-      assignment_name: result.data?.assignment_name,
+      combined_pdf_path: result.combined_pdf_path,
+      assignment_name: result.assignment_name,
+      students_without_submission: result.no_submission,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {

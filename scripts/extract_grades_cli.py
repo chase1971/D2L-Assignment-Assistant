@@ -506,7 +506,7 @@ def main() -> None:
         if pdf_path_override and os.path.exists(pdf_path_override):
             # Use the provided PDF path
             combined_pdf_path = pdf_path_override
-            log(f"📄 Using selected PDF: {os.path.basename(combined_pdf_path)}")
+            log("GRADES_USING_SELECTED_PDF", filename=os.path.basename(combined_pdf_path))
             
             # Try to find the grade processing folder from the PDF path
             # PDF should be in: .../grade processing [assignment]/PDFs/[filename].pdf
@@ -686,18 +686,18 @@ def main() -> None:
         try:
             # Open Excel file
             if os.path.exists(import_file_path):
-                log(f"📂 Opening import file...")
+                log("GRADES_OPENING_IMPORT")
                 open_file_with_default_app(import_file_path)
             
             # Also open the first pages PDF if it exists
             first_pages_pdf = os.path.join(grade_processing_folder, "PDFs", "1combinedpdf_GRADES_ONLY.pdf")
             if not os.path.exists(first_pages_pdf):
                 # Try to create it if it doesn't exist
-                log(f"📄 Creating first pages PDF...")
+                log("GRADES_CREATING_FIRST_PAGES")
                 first_pages_pdf = create_first_pages_pdf(combined_pdf_path, lambda msg: None)
             
             if first_pages_pdf and os.path.exists(first_pages_pdf):
-                log(f"📄 Opening grades PDF...")
+                log("GRADES_OPENING_GRADES_PDF")
                 open_file_with_default_app(first_pages_pdf)
                 
                 # Try to arrange windows side-by-side (Windows only)
@@ -706,13 +706,13 @@ def main() -> None:
                     # Wait briefly and arrange - look for CSV/Excel and PDF windows
                     csv_filename = os.path.basename(import_file_path)
                     pdf_filename = os.path.basename(first_pages_pdf)
-                    log(f"🖥️ Arranging windows side-by-side...")
+                    log("GRADES_ARRANGING_WINDOWS")
                     if arrange_windows_side_by_side([csv_filename, pdf_filename], delay=1.5):
-                        log(f"✓ Windows arranged")
+                        log("GRADES_WINDOWS_ARRANGED")
                     else:
-                        log(f"⚠️ Could not arrange windows (they may still be open)")
+                        log("GRADES_WINDOWS_ARRANGE_FAILED")
                 except Exception as e:
-                    log(f"⚠️ Window arrangement unavailable: {e}")
+                    log("GRADES_WINDOW_ARRANGEMENT_UNAVAILABLE", error=str(e))
                     pass  # Silent fail - not critical
         except Exception as e:
             log("DEV_ERROR_OPEN_EXTRACTED_FILES", error=str(e))

@@ -70,6 +70,14 @@ export interface Option2State {
   setEmailModalMode: (value: 'all' | 'without-assignment') => void;
   emailStudents: Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>;
   setEmailStudents: (value: Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>) => void;
+  studentsWithoutSubmission: string[];
+  setStudentsWithoutSubmission: (value: string[]) => void;
+  
+  // Statistics modal
+  showStatisticsModal: boolean;
+  setShowStatisticsModal: (value: boolean) => void;
+  statisticsStudents: any[];
+  setStatisticsStudents: (value: any[]) => void;
   
   // Uploaded files
   uploadedPdfFile: any | null;
@@ -196,6 +204,11 @@ export function useOption2State(): Option2State {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailModalMode, setEmailModalMode] = useState<'all' | 'without-assignment'>('all');
   const [emailStudents, setEmailStudents] = useState<Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>>([]);
+  const [studentsWithoutSubmission, setStudentsWithoutSubmission] = useState<string[]>([]);
+  
+  // Statistics modal
+  const [showStatisticsModal, setShowStatisticsModal] = useState(false);
+  const [statisticsStudents, setStatisticsStudents] = useState<any[]>([]);
   
   // Uploaded files
   const [uploadedPdfFile, setUploadedPdfFile] = useState<any | null>(null);
@@ -338,6 +351,12 @@ export function useOption2State(): Option2State {
     setEmailModalMode,
     emailStudents,
     setEmailStudents,
+    studentsWithoutSubmission,
+    setStudentsWithoutSubmission,
+    showStatisticsModal,
+    setShowStatisticsModal,
+    statisticsStudents,
+    setStatisticsStudents,
     uploadedPdfFile,
     setUploadedPdfFile,
     uploadedPdfFileForExtraction,

@@ -31,6 +31,7 @@ export interface ApiResult {
   combined_pdf_path?: string;  // From Python backend
   confidenceScores?: ConfidenceScore[];  // For grade extraction
   students?: Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>;  // For email functionality
+  students_without_submission?: string[];  // Students who didn't submit (from process quiz)
   config?: {
     developerMode?: boolean;
   };

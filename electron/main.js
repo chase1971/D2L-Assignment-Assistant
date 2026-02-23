@@ -4,13 +4,14 @@
  * This file handles the Electron window and starts the backend server.
  */
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { spawn, fork, exec } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 
 let mainWindow = null;
 let serverProcess = null;
+let powerSaveBlockerId = null;
 
 // Determine if we're in development or production
 const isDev = !app.isPackaged;
@@ -262,6 +263,11 @@ function createWindow() {
 app.whenReady().then(async () => {
   console.log('App ready, starting...');
   
+  // Prevent system from sleeping while app is running
+  powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+  console.log('Power save blocker started. System will not sleep while app is running.');
+  console.log('Power save blocker active:', powerSaveBlocker.isStarted(powerSaveBlockerId));
+  
   try {
     // Kill any existing process on port 5000 first
     await killPort5000();
@@ -287,6 +293,12 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  // Stop power save blocker
+  if (powerSaveBlockerId !== null && powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+    powerSaveBlocker.stop(powerSaveBlockerId);
+    console.log('Power save blocker stopped');
+  }
+  
   // Kill server process
   if (serverProcess) {
     serverProcess.kill();
@@ -304,6 +316,12 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  // Stop power save blocker
+  if (powerSaveBlockerId !== null && powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+    powerSaveBlocker.stop(powerSaveBlockerId);
+    console.log('Power save blocker stopped');
+  }
+  
   if (serverProcess) {
     serverProcess.kill();
   }

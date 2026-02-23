@@ -19,6 +19,7 @@ from pdf_operations import create_combined_pdf, split_combined_pdf
 from submission_processor import process_submissions
 from file_utils import open_file_with_default_app
 from user_messages import log, log_raw, format_msg
+from student_statistics import record_assignment_submissions
 from grading_helpers import (
     make_error_response,
     extract_assignment_name_from_zip,
@@ -356,7 +357,12 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path):
         # Store results (but don't update grades)
         result.submitted = [name_map[pdf] for pdf in pdf_paths]
         result.unreadable = [get_student_display_name(import_df, u) for u in unreadable]
-        result.no_submission = [get_student_display_name(import_df, u) for u in no_submission]
+        
+        # Calculate all students without submission (both students who had folders but no PDFs,
+        # and students in the import file who never submitted at all)
+        all_students = set(import_df["Username"])
+        students_without_submission = (all_students - submitted - unreadable)
+        result.no_submission = [get_student_display_name(import_df, u) for u in sorted(students_without_submission)]
         
         return result
     
@@ -547,49 +553,41 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
         if pdf_path and os.path.exists(pdf_path):
             log_raw("📄 Using selected PDF...", "INFO")
             combined_pdf_path = pdf_path
-            # Extract assignment name from PDF filename
-            # Format: "Assignment Name CLASS_CODE combined PDF.pdf"
-            pdf_filename = os.path.basename(pdf_path)
-            log_raw(f"   PDF filename: {pdf_filename}", "INFO")
             
-            # Remove "combined PDF.pdf" suffix and class code at the end
-            # E.g., "Quiz 1 (3.1 - 3.4) H 8-920 combined PDF.pdf" -> "Quiz 1 (3.1 - 3.4)"
-            # E.g., "Quiz 1 (3.1 - 3.4) 30-1050 combined PDF.pdf" -> "Quiz 1 (3.1 - 3.4)"
-            assignment_name = pdf_filename.replace(' combined PDF.pdf', '').replace('combined PDF.pdf', '')
-            log_raw(f"   After removing PDF suffix: {assignment_name}", "INFO")
+            # Get the PDF's directory - this tells us exactly which processing folder to use
+            pdf_directory = os.path.dirname(pdf_path)
+            log_raw(f"   PDF directory: {pdf_directory}", "INFO")
             
-            # Remove class code pattern at the end
-            # Pattern 1: letters + space + numbers-numbers (e.g., "H 8-920", "TTH 11-1220")
-            # Pattern 2: just numbers-numbers (e.g., "30-1050")
-            assignment_name = re.sub(r'\s+[A-Z]+\s+\d+-\d+\s*$', '', assignment_name, flags=re.IGNORECASE).strip()
-            assignment_name = re.sub(r'\s+\d+-\d+\s*$', '', assignment_name).strip()
-            log_raw(f"   Extracted assignment name: {assignment_name}", "INFO")
-
-            log_raw(f"🔍 Looking for folder containing: {assignment_name}", "INFO")
-            # Find processing folder that contains this assignment name
-            # Search for any folder matching "grade processing*[assignment_name]*"
-            processing_folder = None
-            found_folders = []
+            # The PDF should be in the "PDFs" folder inside the processing folder
+            # E.g., "G:\...\grade processing 230-150 Quiz 2 (4.1 - 4.6)\PDFs\Quiz 2 ... combined PDF.pdf"
+            # So the processing folder is the parent of the PDFs folder
+            if os.path.basename(pdf_directory).lower() == 'pdfs':
+                processing_folder = os.path.dirname(pdf_directory)
+                log_raw(f"✓ Determined processing folder from PDF path", "INFO")
+                log_raw(f"   Processing folder: {os.path.basename(processing_folder)}", "INFO")
+            else:
+                # Fallback: PDF is not in a PDFs subfolder, try to use the directory itself
+                processing_folder = pdf_directory
+                log_raw(f"⚠ PDF not in 'PDFs' subfolder, using directory as processing folder", "WARN")
             
-            for folder_name in os.listdir(class_folder_path):
-                folder_path = os.path.join(class_folder_path, folder_name)
-                if os.path.isdir(folder_path):
-                    # Check if folder name contains "grade processing"
-                    if 'grade processing' in folder_name.lower():
-                        found_folders.append(folder_name)
-                        # Check if it also contains the assignment name
-                        if assignment_name.lower() in folder_name.lower():
-                            processing_folder = folder_path
-                            break
-            
-            # If no match found, log what we found
-            if not processing_folder:
-                if found_folders:
-                    log_raw(f"❌ No matching folder found. Available grade processing folders:", "ERROR")
-                    for folder in found_folders[:5]:  # Show first 5
-                        log_raw(f"   - {folder}", "ERROR")
-                else:
-                    log_raw(f"❌ No grade processing folders found in class folder", "ERROR")
+            # Extract assignment name from the processing folder name
+            folder_name = os.path.basename(processing_folder)
+            if 'grade processing' in folder_name.lower():
+                # Remove "grade processing" and class code prefix to get assignment name
+                assignment_name = re.sub(r'^grade processing\s+', '', folder_name, flags=re.IGNORECASE).strip()
+                # Remove class code at the beginning (e.g., "230-150 ")
+                assignment_name = re.sub(r'^\d+-\d+\s+', '', assignment_name).strip()
+                # Remove " backup" suffix if present
+                assignment_name = re.sub(r'\s+backup\s*$', '', assignment_name, flags=re.IGNORECASE).strip()
+                log_raw(f"   Extracted assignment name: {assignment_name}", "INFO")
+            else:
+                # Fallback: extract from PDF filename
+                pdf_filename = os.path.basename(pdf_path)
+                assignment_name = pdf_filename.replace(' combined PDF.pdf', '').replace('combined PDF.pdf', '')
+                # Remove class code pattern at the end
+                assignment_name = re.sub(r'\s+[A-Z]+\s+\d+-\d+\s*$', '', assignment_name, flags=re.IGNORECASE).strip()
+                assignment_name = re.sub(r'\s+\d+-\d+\s*$', '', assignment_name).strip()
+                log_raw(f"   Extracted assignment name from PDF: {assignment_name}", "INFO")
 
         else:
             log_raw("🔍 Finding most recent processing folder...", "INFO")
@@ -749,7 +747,24 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
         # Store results
         result.submitted = [name_map[pdf] for pdf in pdf_paths]
         result.unreadable = [get_student_display_name(import_df, u) for u in unreadable]
-        result.no_submission = [get_student_display_name(import_df, u) for u in no_submission]
+        
+        # Calculate all students without submission (both students who had folders but no PDFs,
+        # and students in the import file who never submitted at all)
+        all_students = set(import_df["Username"])
+        students_without_submission = (all_students - submitted - unreadable)
+        result.no_submission = [get_student_display_name(import_df, u) for u in sorted(students_without_submission)]
+        
+        # Record statistics for this assignment (quiz)
+        try:
+            record_assignment_submissions(
+                class_folder_name,
+                assignment_name,
+                result.submitted,
+                result.no_submission
+            )
+        except Exception as e:
+            # Don't fail the whole process if statistics recording fails
+            log("DEV_ERROR", error=f"Failed to record statistics: {str(e)}")
         
         return result
     
@@ -898,7 +913,24 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         # Store results
         result.submitted = [name_map[pdf] for pdf in pdf_paths]
         result.unreadable = [get_student_display_name(import_df, u) for u in unreadable]
-        result.no_submission = [get_student_display_name(import_df, u) for u in no_submission]
+        
+        # Calculate all students without submission (both students who had folders but no PDFs,
+        # and students in the import file who never submitted at all)
+        all_students = set(import_df["Username"])
+        students_without_submission = (all_students - submitted - unreadable)
+        result.no_submission = [get_student_display_name(import_df, u) for u in sorted(students_without_submission)]
+        
+        # Record statistics for this assignment (completion)
+        try:
+            record_assignment_submissions(
+                class_folder_name,
+                assignment_name,
+                result.submitted,
+                result.no_submission
+            )
+        except Exception as e:
+            # Don't fail the whole process if statistics recording fails
+            log("DEV_ERROR", error=f"Failed to record statistics: {str(e)}")
         
         return result
     

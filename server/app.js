@@ -16,6 +16,7 @@ const quizRoutes = require('./routes/quiz');
 const classesRoutes = require('./routes/classes');
 const patchesRoutes = require('./routes/patches');
 const filesRoutes = require('./routes/files');
+const statisticsRoutes = require('./routes/statistics');
 
 const app = express();
 
@@ -71,5 +72,6 @@ app.use('/api/quiz', quizRoutes);
 app.use('/api/classes', classesRoutes);
 app.use('/api/patches', patchesRoutes);
 app.use('/api', filesRoutes);
+app.use('/api/statistics', statisticsRoutes);
 
 module.exports = { app, SCRIPTS_PATH };
