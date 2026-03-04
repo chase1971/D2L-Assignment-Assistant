@@ -119,4 +119,38 @@ router.post('/update-count', async (req, res) => {
   }
 });
 
+// Update late submission count
+router.post('/update-late-count', async (req, res) => {
+  try {
+    const { className, studentName, count } = req.body;
+
+    if (!className) {
+      return apiResponse(res, { success: false, error: 'Class name is required' });
+    }
+
+    if (!studentName) {
+      return apiResponse(res, { success: false, error: 'Student name is required' });
+    }
+
+    if (typeof count !== 'number') {
+      return apiResponse(res, { success: false, error: 'Count must be a number' });
+    }
+
+    const result = await runPythonScript('statistics_cli.py', [
+      'update-late-count',
+      className,
+      studentName,
+      Math.max(0, count).toString()
+    ]);
+
+    apiResponse(res, {
+      success: result.success,
+      message: result.message,
+      ...(result.success ? {} : { error: result.error || 'Failed to update late count' })
+    });
+  } catch (error) {
+    apiResponse(res, { success: false, error: error.message });
+  }
+});
+
 module.exports = router;

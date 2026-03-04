@@ -8,6 +8,7 @@ import { apiCall, ApiResult, LogCallback } from './quizGraderService';
 export interface StudentStatistics {
   name: string;
   failed_submissions: number;
+  late_submissions: number;
   assignments: {
     [assignmentName: string]: {
       submitted: boolean;
@@ -21,6 +22,7 @@ export interface StatisticsData {
   students: {
     [studentName: string]: {
       failed_submissions: number;
+      late_submissions: number;
       assignments: {
         [assignmentName: string]: {
           submitted: boolean;
@@ -91,5 +93,21 @@ export const updateFailedSubmissionCount = (
     endpoint: '/statistics/update-count',
     body: { className, studentName, count },
     errorMessage: 'Failed to update failed submission count',
+    addLog
+  });
+
+/**
+ * Update late submission count for a specific student (auto-saved)
+ */
+export const updateLateSubmissionCount = (
+  className: string,
+  studentName: string,
+  count: number,
+  addLog?: LogCallback
+): Promise<ApiResult> =>
+  apiCall({
+    endpoint: '/statistics/update-late-count',
+    body: { className, studentName, count },
+    errorMessage: 'Failed to update late submission count',
     addLog
   });

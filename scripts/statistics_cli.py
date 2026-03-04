@@ -8,6 +8,7 @@ Operations:
   - save <className> <json_data>: Save statistics for a class
   - update-notes <className> <studentName> <notes>: Update student notes
   - update-count <className> <studentName> <count>: Update failed submission count
+  - update-late-count <className> <studentName> <count>: Update late submission count
 """
 
 import sys
@@ -24,6 +25,7 @@ from student_statistics import (
     save_statistics,
     update_student_notes,
     update_failed_submission_count,
+    update_late_submission_count,
     get_all_student_statistics
 )
 
@@ -97,6 +99,22 @@ def main():
             response = {
                 "success": success,
                 "message": "Count updated successfully" if success else "Failed to update count"
+            }
+            print(json.dumps(response))
+        
+        elif operation == "update-late-count":
+            # Update late submission count for a student
+            if len(sys.argv) < 5:
+                raise ValueError("Missing student name or count")
+            
+            student_name = sys.argv[3]
+            count = max(0, int(sys.argv[4]))
+            
+            success = update_late_submission_count(class_name, student_name, count)
+            
+            response = {
+                "success": success,
+                "message": "Late count updated successfully" if success else "Failed to update late count"
             }
             print(json.dumps(response))
         

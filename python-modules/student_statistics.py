@@ -60,6 +60,7 @@ def load_statistics(class_folder_name: str) -> Dict[str, Any]:
         "students": {
             "Student Name": {
                 "failed_submissions": 5,
+                "late_submissions": 2,
                 "assignments": {
                     "Quiz 1": {"submitted": false, "date": "2024-01-15"},
                     "Quiz 2": {"submitted": true, "date": "2024-01-20"}
@@ -149,6 +150,7 @@ def record_assignment_submissions(
         if student_name not in statistics["students"]:
             statistics["students"][student_name] = {
                 "failed_submissions": 0,
+                "late_submissions": 0,
                 "assignments": {},
                 "notes": ""
             }
@@ -163,6 +165,7 @@ def record_assignment_submissions(
         if student_name not in statistics["students"]:
             statistics["students"][student_name] = {
                 "failed_submissions": 0,
+                "late_submissions": 0,
                 "assignments": {},
                 "notes": ""
             }
@@ -208,11 +211,46 @@ def update_student_notes(
     if student_name not in statistics["students"]:
         statistics["students"][student_name] = {
             "failed_submissions": 0,
+            "late_submissions": 0,
             "assignments": {},
             "notes": ""
         }
     
     statistics["students"][student_name]["notes"] = notes
+    
+    return save_statistics(class_folder_name, statistics)
+
+
+def update_late_submission_count(
+    class_folder_name: str,
+    student_name: str,
+    count: int
+) -> bool:
+    """
+    Update the late submission count for a student.
+    
+    Args:
+        class_folder_name: Name of the class folder
+        student_name: Name of the student
+        count: New late submission count (must be >= 0)
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    statistics = load_statistics(class_folder_name)
+    
+    if "students" not in statistics:
+        statistics["students"] = {}
+    
+    if student_name not in statistics["students"]:
+        statistics["students"][student_name] = {
+            "failed_submissions": 0,
+            "late_submissions": max(0, count),
+            "assignments": {},
+            "notes": ""
+        }
+    else:
+        statistics["students"][student_name]["late_submissions"] = max(0, count)
     
     return save_statistics(class_folder_name, statistics)
 
@@ -241,6 +279,7 @@ def update_failed_submission_count(
     if student_name not in statistics["students"]:
         statistics["students"][student_name] = {
             "failed_submissions": count,
+            "late_submissions": 0,
             "assignments": {},
             "notes": ""
         }
@@ -276,6 +315,7 @@ def get_all_student_statistics(class_folder_name: str) -> List[Dict[str, Any]]:
         result.append({
             "name": student_name,
             "failed_submissions": student_data.get("failed_submissions", 0),
+            "late_submissions": student_data.get("late_submissions", 0),
             "assignments": student_data.get("assignments", {}),
             "notes": student_data.get("notes", "")
         })

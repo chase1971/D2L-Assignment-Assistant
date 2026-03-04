@@ -981,6 +981,23 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     }
   };
 
+  // Update late submission count (auto-saves and refreshes)
+  const handleUpdateLateSubmissionCount = async (studentName: string, count: number) => {
+    if (!selectedClass) return;
+    try {
+      const { updateLateSubmissionCount } = await import('../../services/statisticsService');
+      const result = await updateLateSubmissionCount(selectedClass, studentName, count, addLog);
+      
+      if (result.success) {
+        await handleShowStatistics();
+      } else {
+        addLog(`❌ Error updating late count: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      addLog(`❌ Error updating late count: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
   return {
     handleClassChange,
     handleOpenDownloads,
@@ -1008,6 +1025,7 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     loadStudentsForEmail,
     handleShowStatistics,
     handleUpdateStudentNotes,
-    handleUpdateFailedSubmissionCount
+    handleUpdateFailedSubmissionCount,
+    handleUpdateLateSubmissionCount
   };
 }

@@ -144,6 +144,7 @@ export default function Option2() {
         students={state.statisticsStudents}
         onUpdateNotes={actions.handleUpdateStudentNotes}
         onUpdateCount={actions.handleUpdateFailedSubmissionCount}
+        onUpdateLateCount={actions.handleUpdateLateSubmissionCount}
         onRefresh={actions.handleShowStatistics}
         isDark={state.isDark}
         metalButtonClass={metalButtonClass}

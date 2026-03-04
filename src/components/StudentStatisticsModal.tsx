@@ -13,6 +13,7 @@ interface StudentStatisticsModalProps {
   students: StudentStatistics[];
   onUpdateNotes: (studentName: string, notes: string) => void;
   onUpdateCount: (studentName: string, count: number) => void;
+  onUpdateLateCount: (studentName: string, count: number) => void;
   onRefresh: () => void;
   isDark: boolean;
   metalButtonClass: (isDark: boolean) => string;
@@ -25,6 +26,7 @@ export default function StudentStatisticsModal({
   students,
   onUpdateNotes,
   onUpdateCount,
+  onUpdateLateCount,
   onRefresh,
   isDark,
   metalButtonClass,
@@ -382,6 +384,87 @@ export default function StudentStatisticsModal({
                             </button>
                           </>
                         )}
+                      </div>
+
+                      {/* Late submissions: count + minus/plus (auto-save) */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '2px',
+                          flexShrink: 0,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          style={{
+                            fontSize: '10px',
+                            color: isDark ? '#b0b0b0' : '#666',
+                            marginRight: '2px',
+                          }}
+                          title="Late submissions"
+                        >
+                          Late
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = student.late_submissions ?? 0;
+                            if (current > 0) {
+                              onUpdateLateCount(student.name, current - 1);
+                            }
+                          }}
+                          style={{
+                            width: '22px',
+                            height: '22px',
+                            padding: 0,
+                            fontSize: '14px',
+                            lineHeight: 1,
+                            fontWeight: 'bold',
+                            backgroundColor: isDark ? '#4a4a4a' : '#e0e0e0',
+                            color: isDark ? '#e0e0e0' : '#333',
+                            border: `1px solid ${isDark ? '#555' : '#ccc'}`,
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                          }}
+                          title="Decrease late count"
+                        >
+                          −
+                        </button>
+                        <span
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            color: isDark ? '#ffb74d' : '#e65100',
+                            minWidth: '20px',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {student.late_submissions ?? 0}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = student.late_submissions ?? 0;
+                            onUpdateLateCount(student.name, current + 1);
+                          }}
+                          style={{
+                            width: '22px',
+                            height: '22px',
+                            padding: 0,
+                            fontSize: '14px',
+                            lineHeight: 1,
+                            fontWeight: 'bold',
+                            backgroundColor: isDark ? '#4a4a4a' : '#e0e0e0',
+                            color: isDark ? '#e0e0e0' : '#333',
+                            border: `1px solid ${isDark ? '#555' : '#ccc'}`,
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                          }}
+                          title="Increase late count"
+                        >
+                          +
+                        </button>
                       </div>
                     </div>
                   );
