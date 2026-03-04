@@ -108,10 +108,10 @@ export default function StudentStatisticsModal({
           style={{
             backgroundColor: isDark ? '#2d2d2d' : 'white',
             borderRadius: '8px',
-            padding: '24px',
+            padding: '12px 16px',
             maxWidth: '900px',
             width: '90%',
-            maxHeight: '85vh',
+            maxHeight: '90vh',
             display: 'flex',
             flexDirection: 'column',
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
@@ -119,11 +119,11 @@ export default function StudentStatisticsModal({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '10px' }}>
             <h2
               style={{
-                margin: '0 0 8px 0',
-                fontSize: '24px',
+                margin: '0 0 4px 0',
+                fontSize: '18px',
                 color: isDark ? '#e0e0e0' : '#333',
               }}
             >
@@ -131,15 +131,15 @@ export default function StudentStatisticsModal({
             </h2>
             <div
               style={{
-                fontSize: '14px',
+                fontSize: '12px',
                 color: isDark ? '#b0b0b0' : '#666',
-                marginBottom: '12px',
+                marginBottom: '8px',
               }}
             >
-              <span style={{ marginRight: '16px' }}>
-                Total Students: <strong>{students.length}</strong>
+              <span style={{ marginRight: '12px' }}>
+                Total: <strong>{students.length}</strong>
               </span>
-              <span style={{ marginRight: '16px' }}>
+              <span style={{ marginRight: '12px' }}>
                 With Failures: <strong>{studentsWithFailures}</strong>
               </span>
               <span>
@@ -155,46 +155,53 @@ export default function StudentStatisticsModal({
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
                 width: '100%',
-                padding: '8px 12px',
+                padding: '6px 10px',
                 borderRadius: '4px',
                 border: `1px solid ${isDark ? '#555' : '#ddd'}`,
                 backgroundColor: isDark ? '#3a3a3a' : 'white',
                 color: isDark ? '#e0e0e0' : '#333',
-                fontSize: '14px',
+                fontSize: '13px',
               }}
             />
           </div>
 
-          {/* Student List */}
+          {/* Student List - two columns */}
           <div
             style={{
               flex: 1,
+              minHeight: 0,
               overflow: 'auto',
-              marginBottom: '16px',
+              marginBottom: '10px',
             }}
           >
             {filteredStudents.length === 0 ? (
               <div
                 style={{
                   textAlign: 'center',
-                  padding: '40px 20px',
+                  padding: '24px 16px',
                   color: isDark ? '#999' : '#666',
+                  fontSize: '13px',
                 }}
               >
                 {students.length === 0 ? (
                   <>
-                    <p style={{ fontSize: '18px', marginBottom: '8px' }}>📋 No statistics yet</p>
-                    <p style={{ fontSize: '14px' }}>
-                      Statistics will be recorded automatically when you process quizzes and
-                      completions.
+                    <p style={{ margin: '0 0 4px 0' }}>📋 No statistics yet</p>
+                    <p style={{ margin: 0, fontSize: '12px' }}>
+                      Recorded when you process quizzes and completions.
                     </p>
                   </>
                 ) : (
-                  <p>No students match your search.</p>
+                  <p style={{ margin: 0 }}>No students match your search.</p>
                 )}
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '6px 12px',
+                }}
+              >
                 {filteredStudents.map((student) => {
                   const assignmentCount = Object.keys(student.assignments).length;
                   const isEditing = editingCount === student.name;
@@ -206,12 +213,12 @@ export default function StudentStatisticsModal({
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        padding: '12px 16px',
+                        padding: '6px 10px',
                         backgroundColor: isDark ? '#3a3a3a' : '#f5f5f5',
-                        borderRadius: '6px',
+                        borderRadius: '4px',
                         cursor: isEditing ? 'default' : 'pointer',
                         transition: 'all 0.2s',
-                        border: `2px solid ${
+                        border: `1px solid ${
                           student.failed_submissions > 0
                             ? isDark
                               ? '#d32f2f'
@@ -231,12 +238,15 @@ export default function StudentStatisticsModal({
                       }}
                     >
                       {/* Student Name */}
-                      <div style={{ flex: 1, marginRight: '16px' }}>
+                      <div style={{ flex: 1, minWidth: 0, marginRight: '8px' }}>
                         <div
                           style={{
                             fontWeight: '500',
+                            fontSize: '13px',
                             color: isDark ? '#e0e0e0' : '#333',
-                            marginBottom: '4px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           {student.name}
@@ -244,13 +254,16 @@ export default function StudentStatisticsModal({
                         {student.notes && (
                           <div
                             style={{
-                              fontSize: '12px',
+                              fontSize: '11px',
                               color: isDark ? '#999' : '#666',
                               fontStyle: 'italic',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
                             }}
                           >
-                            {student.notes.length > 60
-                              ? student.notes.substring(0, 60) + '...'
+                            {student.notes.length > 35
+                              ? student.notes.substring(0, 35) + '...'
                               : student.notes}
                           </div>
                         )}
@@ -259,12 +272,13 @@ export default function StudentStatisticsModal({
                       {/* Assignment Count */}
                       <div
                         style={{
-                          marginRight: '16px',
-                          fontSize: '13px',
+                          marginRight: '6px',
+                          fontSize: '11px',
                           color: isDark ? '#b0b0b0' : '#666',
+                          flexShrink: 0,
                         }}
                       >
-                        {assignmentCount} assignment{assignmentCount !== 1 ? 's' : ''}
+                        {assignmentCount} asg
                       </div>
 
                       {/* Failed Submissions Count */}
@@ -272,7 +286,8 @@ export default function StudentStatisticsModal({
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '8px',
+                          gap: '4px',
+                          flexShrink: 0,
                         }}
                       >
                         {isEditing ? (
@@ -286,13 +301,13 @@ export default function StudentStatisticsModal({
                               onClick={(e) => e.stopPropagation()}
                               autoFocus
                               style={{
-                                width: '60px',
-                                padding: '4px 8px',
+                                width: '44px',
+                                padding: '2px 4px',
                                 borderRadius: '4px',
                                 border: `1px solid ${isDark ? '#555' : '#ddd'}`,
                                 backgroundColor: isDark ? '#2d2d2d' : 'white',
                                 color: isDark ? '#e0e0e0' : '#333',
-                                fontSize: '14px',
+                                fontSize: '12px',
                               }}
                             />
                             <button
@@ -301,8 +316,8 @@ export default function StudentStatisticsModal({
                                 handleSaveCount(student.name);
                               }}
                               style={{
-                                padding: '4px 8px',
-                                fontSize: '12px',
+                                padding: '2px 6px',
+                                fontSize: '11px',
                                 backgroundColor: '#4CAF50',
                                 color: 'white',
                                 border: 'none',
@@ -318,8 +333,8 @@ export default function StudentStatisticsModal({
                                 handleCancelEdit();
                               }}
                               style={{
-                                padding: '4px 8px',
-                                fontSize: '12px',
+                                padding: '2px 6px',
+                                fontSize: '11px',
                                 backgroundColor: '#f44336',
                                 color: 'white',
                                 border: 'none',
@@ -334,7 +349,7 @@ export default function StudentStatisticsModal({
                           <>
                             <span
                               style={{
-                                fontSize: '20px',
+                                fontSize: '16px',
                                 fontWeight: 'bold',
                                 color:
                                   student.failed_submissions > 0
@@ -344,7 +359,7 @@ export default function StudentStatisticsModal({
                                     : isDark
                                     ? '#66bb6a'
                                     : '#4CAF50',
-                                minWidth: '40px',
+                                minWidth: '24px',
                                 textAlign: 'center',
                               }}
                             >
@@ -353,8 +368,8 @@ export default function StudentStatisticsModal({
                             <button
                               onClick={(e) => handleStartEditCount(student, e)}
                               style={{
-                                padding: '4px 8px',
-                                fontSize: '12px',
+                                padding: '2px 6px',
+                                fontSize: '11px',
                                 backgroundColor: isDark ? '#4a4a4a' : '#e0e0e0',
                                 color: isDark ? '#e0e0e0' : '#333',
                                 border: 'none',
@@ -381,7 +396,7 @@ export default function StudentStatisticsModal({
               display: 'flex',
               justifyContent: 'space-between',
               gap: '8px',
-              paddingTop: '16px',
+              paddingTop: '8px',
               borderTop: `1px solid ${isDark ? '#444' : '#ddd'}`,
             }}
           >
@@ -390,8 +405,8 @@ export default function StudentStatisticsModal({
               className={metalButtonClass(isDark)}
               style={{
                 ...metalButtonStyle(isDark),
-                padding: '8px 16px',
-                fontSize: '14px',
+                padding: '6px 12px',
+                fontSize: '13px',
               }}
             >
               🔄 Refresh
@@ -401,8 +416,8 @@ export default function StudentStatisticsModal({
               className={metalButtonClass(isDark)}
               style={{
                 ...metalButtonStyle(isDark),
-                padding: '8px 16px',
-                fontSize: '14px',
+                padding: '6px 12px',
+                fontSize: '13px',
               }}
             >
               Close

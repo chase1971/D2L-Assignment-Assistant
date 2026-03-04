@@ -158,7 +158,7 @@ def record_assignment_submissions(
             "date": current_date
         }
     
-    # Record non-submissions
+    # Record non-submissions (only count once per assignment - re-runs don't double-count)
     for student_name in students_not_submitted:
         if student_name not in statistics["students"]:
             statistics["students"][student_name] = {
@@ -167,14 +167,19 @@ def record_assignment_submissions(
                 "notes": ""
             }
         
-        statistics["students"][student_name]["assignments"][assignment_name] = {
+        assignments = statistics["students"][student_name]["assignments"]
+        # Only increment if this assignment wasn't already recorded as not submitted
+        # (avoids double-counting when re-running for demos, tests, or presentations)
+        already_counted = assignment_name in assignments and assignments[assignment_name].get("submitted", True) is False
+        
+        assignments[assignment_name] = {
             "submitted": False,
             "date": current_date
         }
         
-        # Increment failed submission count
-        statistics["students"][student_name]["failed_submissions"] = \
-            statistics["students"][student_name].get("failed_submissions", 0) + 1
+        if not already_counted:
+            statistics["students"][student_name]["failed_submissions"] = \
+                statistics["students"][student_name].get("failed_submissions", 0) + 1
     
     return save_statistics(class_folder_name, statistics)
 

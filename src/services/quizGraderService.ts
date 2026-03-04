@@ -41,7 +41,7 @@ export interface ApiResult {
 // GENERIC API CALLER - Eliminates repetitive fetch/error handling
 // ============================================================
 
-type LogCallback = (msg: string) => void;
+export type LogCallback = (msg: string) => void;
 
 interface ApiCallOptions {
   endpoint: string;
@@ -51,7 +51,7 @@ interface ApiCallOptions {
   addLog?: LogCallback;
 }
 
-async function apiCall({ endpoint, body, logMessage, errorMessage, addLog }: ApiCallOptions): Promise<ApiResult> {
+export async function apiCall({ endpoint, body, logMessage, errorMessage, addLog }: ApiCallOptions): Promise<ApiResult> {
   try {
     if (addLog && logMessage) {
       addLog(logMessage);
