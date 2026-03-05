@@ -40,9 +40,12 @@ export default function StudentStatisticsModal({
 
   if (!isOpen) return null;
 
-  // Filter students based on search term
+  // Filter students based on search term, then sort alphabetically by name
   const filteredStudents = students.filter((student) =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const sortedFilteredStudents = [...filteredStudents].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   );
 
   // Calculate totals
@@ -176,7 +179,7 @@ export default function StudentStatisticsModal({
               marginBottom: '10px',
             }}
           >
-            {filteredStudents.length === 0 ? (
+            {sortedFilteredStudents.length === 0 ? (
               <div
                 style={{
                   textAlign: 'center',
@@ -204,7 +207,7 @@ export default function StudentStatisticsModal({
                   gap: '6px 12px',
                 }}
               >
-                {filteredStudents.map((student) => {
+                {sortedFilteredStudents.map((student) => {
                   const assignmentCount = Object.keys(student.assignments).length;
                   const isEditing = editingCount === student.name;
 
@@ -216,26 +219,47 @@ export default function StudentStatisticsModal({
                         display: 'flex',
                         alignItems: 'center',
                         padding: '6px 10px',
-                        backgroundColor: isDark ? '#3a3a3a' : '#f5f5f5',
                         borderRadius: '4px',
                         cursor: isEditing ? 'default' : 'pointer',
                         transition: 'all 0.2s',
                         border: `1px solid ${
-                          student.failed_submissions > 0
+                          (student.late_submissions ?? 0) > 0
                             ? isDark
-                              ? '#d32f2f'
-                              : '#f44336'
+                              ? '#ffb74d'
+                              : '#e65100'
                             : 'transparent'
                         }`,
+                        backgroundColor:
+                          (student.late_submissions ?? 0) > 0
+                            ? isDark
+                              ? 'rgba(255, 183, 77, 0.12)'
+                              : 'rgba(230, 81, 0, 0.08)'
+                            : isDark
+                            ? '#3a3a3a'
+                            : '#f5f5f5',
                       }}
                       onMouseEnter={(e) => {
                         if (!isEditing) {
-                          e.currentTarget.style.backgroundColor = isDark ? '#454545' : '#e8e8e8';
+                          const isLate = (student.late_submissions ?? 0) > 0;
+                          e.currentTarget.style.backgroundColor = isLate
+                            ? isDark
+                              ? 'rgba(255, 183, 77, 0.22)'
+                              : 'rgba(230, 81, 0, 0.14)'
+                            : isDark
+                            ? '#454545'
+                            : '#e8e8e8';
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!isEditing) {
-                          e.currentTarget.style.backgroundColor = isDark ? '#3a3a3a' : '#f5f5f5';
+                          const isLate = (student.late_submissions ?? 0) > 0;
+                          e.currentTarget.style.backgroundColor = isLate
+                            ? isDark
+                              ? 'rgba(255, 183, 77, 0.12)'
+                              : 'rgba(230, 81, 0, 0.08)'
+                            : isDark
+                            ? '#3a3a3a'
+                            : '#f5f5f5';
                         }
                       }}
                     >

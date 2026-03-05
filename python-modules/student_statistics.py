@@ -6,7 +6,7 @@ Tracks student submission failures and other statistics across assignments
 import os
 import json
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 from config_reader import get_rosters_path
 
 
@@ -51,6 +51,31 @@ def _find_class_folder(class_folder_name: str) -> Optional[str]:
     return None
 
 
+def _get_roster_names(class_folder_path: str) -> Optional[Set[str]]:
+    """
+    Read the Import File and return a set of current student full names (lowercase).
+    Returns None if the Import File can't be read (so pruning is skipped safely).
+    """
+    try:
+        import pandas as pd
+
+        for filename in ("Import File.csv", "import.csv"):
+            import_path = os.path.join(class_folder_path, filename)
+            if os.path.exists(import_path):
+                df = pd.read_csv(import_path, dtype=str)
+                if "First Name" in df.columns and "Last Name" in df.columns:
+                    names = set()
+                    for _, row in df.iterrows():
+                        first = str(row["First Name"]).strip()
+                        last = str(row["Last Name"]).strip()
+                        if first and last and first.lower() != "nan" and last.lower() != "nan":
+                            names.add(f"{first} {last}".lower())
+                    return names
+    except Exception:
+        pass
+    return None
+
+
 def load_statistics(class_folder_name: str) -> Dict[str, Any]:
     """
     Load statistics for a class. Creates empty structure if doesn't exist.
@@ -82,10 +107,30 @@ def load_statistics(class_folder_name: str) -> Dict[str, Any]:
     
     try:
         with open(stats_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
     except Exception as e:
         print(f"Error loading statistics: {e}")
         return {"students": {}, "last_updated": None}
+    
+    # Remove students no longer on the roster
+    roster_names = _get_roster_names(class_folder_path)
+    if roster_names is not None and "students" in data:
+        removed = [
+            name for name in list(data["students"].keys())
+            if name.lower() not in roster_names
+        ]
+        if removed:
+            for name in removed:
+                del data["students"][name]
+            # Persist the pruned data so it stays clean
+            try:
+                data["last_updated"] = datetime.now().isoformat()
+                with open(stats_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+            except Exception:
+                pass  # Pruning is best-effort; don't block the load
+    
+    return data
 
 
 def save_statistics(class_folder_name: str, statistics: Dict[str, Any]) -> bool:

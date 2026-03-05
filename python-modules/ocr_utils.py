@@ -18,11 +18,36 @@ from grading_constants import (
 )
 
 # Load environment variables from .env file
+def _load_env_file():
+    """Load .env file manually as fallback when python-dotenv is not installed."""
+    # Search for .env file starting from this module's location, walking up
+    search_dir = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(5):  # Walk up at most 5 levels
+        env_path = os.path.join(search_dir, '.env')
+        if os.path.exists(env_path):
+            try:
+                with open(env_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            key, _, value = line.partition('=')
+                            key = key.strip()
+                            value = value.strip().strip('"').strip("'")
+                            if key and key not in os.environ:
+                                os.environ[key] = value
+                return
+            except Exception:
+                pass
+        parent = os.path.dirname(search_dir)
+        if parent == search_dir:
+            break
+        search_dir = parent
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass  # python-dotenv not installed, continue anyway
+    _load_env_file()
 
 # Google Cloud Vision API Key - loaded from environment variable
 GOOGLE_VISION_API_KEY = os.getenv("GOOGLE_VISION_API_KEY", "")
