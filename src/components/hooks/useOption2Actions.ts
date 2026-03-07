@@ -233,8 +233,8 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         } else {
           setStudentsWithoutSubmission([]);
         }
-      } else if (result.error === 'Multiple ZIP files found') {
-        setZipFiles(result.zip_files || []);
+      } else if (result.zip_files && result.zip_files.length > 0) {
+        setZipFiles(result.zip_files);
         setZipSelectionMode('quiz');
         setShowZipSelection(true);
         return;
@@ -361,8 +361,8 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
             zipPath: ''
           });
         }
-      } else if (result.error === 'Multiple ZIP files found') {
-        setZipFiles(result.zip_files || []);
+      } else if (result.zip_files && result.zip_files.length > 0) {
+        setZipFiles(result.zip_files);
         setZipSelectionMode('completion');
         setShowZipSelection(true);
         return;

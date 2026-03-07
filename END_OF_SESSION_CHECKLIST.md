@@ -19,12 +19,12 @@ End of session checklist:
    - Update SAFE TO MODIFY if changed
    - Update FRAGILE sections if needed
 
-3. Review our changes against PROJECT_SYNOPSIS.md:
+3. Review our changes against docs/all-docs/PROJECT_SYNOPSIS.md:
    - Did we follow all patterns correctly?
    - Does documentation need updating?
 
 4. Check if we created new patterns:
-   - Add to PROJECT_SYNOPSIS.md if reusable
+   - Add to docs/all-docs/PROJECT_SYNOPSIS.md if reusable
    - Update "Last Updated" date
 ```
 
@@ -95,7 +95,7 @@ in the LAST VERIFIED section."
 
 ---
 
-### ✅ **3. PROJECT_SYNOPSIS.md Updates (If Significant Changes)**
+### ✅ **3. docs/all-docs/PROJECT_SYNOPSIS.md Updates (If Significant Changes)**
 
 **When to update:**
 - Added new module or function
@@ -121,7 +121,7 @@ in the LAST VERIFIED section."
 
 **AI Prompt:**
 ```
-"Check if PROJECT_SYNOPSIS.md needs updating based on what we did.
+"Check if docs/all-docs/PROJECT_SYNOPSIS.md needs updating based on what we did.
 If yes, update the appropriate sections and set Last Updated to YYYY-MM-DD."
 ```
 
@@ -152,13 +152,13 @@ If yes, update the appropriate sections and set Last Updated to YYYY-MM-DD."
 **Standard (most sessions):**
 - Session summary: 1 min
 - File headers: 2 min
-- PROJECT_SYNOPSIS.md check: 2 min
+- docs/all-docs/PROJECT_SYNOPSIS.md check: 2 min
 - **Total: 5 minutes**
 
 **Full (when adding major features):**
 - Session summary: 1 min
 - File headers: 2 min
-- PROJECT_SYNOPSIS.md update: 2 min
+- docs/all-docs/PROJECT_SYNOPSIS.md update: 2 min
 - README.md update: 1 min
 - **Total: 6 minutes**
 
@@ -171,7 +171,7 @@ If yes, update the appropriate sections and set Last Updated to YYYY-MM-DD."
 2. File header updates
 
 ### **🟡 Medium Priority (Do if applicable):**
-3. PROJECT_SYNOPSIS.md updates (if significant changes)
+3. docs/all-docs/PROJECT_SYNOPSIS.md updates (if significant changes)
 4. README.md updates (if user-facing changes)
 
 ### **🟢 Low Priority (Occasional):**
@@ -230,7 +230,7 @@ End of session - 2026-02-05:
 
 1. Add session entry to SESSIONS.md:
    - Today we secured API keys in .env file
-   - Created PROJECT_SYNOPSIS.md
+   - Created docs/all-docs/PROJECT_SYNOPSIS.md
    - Modified ocr_utils.py to load from environment
    - Next: Add file headers to all Python scripts
 
@@ -239,7 +239,7 @@ End of session - 2026-02-05:
    - load_env.py
    Set LAST VERIFIED to 2026-02-05
 
-3. Check: Did we update PROJECT_SYNOPSIS.md correctly?
+3. Check: Did we update docs/all-docs/PROJECT_SYNOPSIS.md correctly?
 
 4. Review: Are all environment variables documented?
 ```
@@ -257,14 +257,14 @@ Weekly review checklist:
 2. Look for repeated patterns that should be documented
 3. Check if any "Next session tasks" were forgotten
 4. Review "Technical debt" items - prioritize cleanup
-5. Update PROJECT_SYNOPSIS.md if patterns emerged
+5. Update docs/all-docs/PROJECT_SYNOPSIS.md if patterns emerged
 6. Clean up any TODO comments in code
 ```
 
 **AI Prompt:**
 ```
 "Read SESSIONS.md and summarize what we accomplished this week.
-Are there any patterns we should add to PROJECT_SYNOPSIS.md?"
+Are there any patterns we should add to docs/all-docs/PROJECT_SYNOPSIS.md?"
 ```
 
 ---

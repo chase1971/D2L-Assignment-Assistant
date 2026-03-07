@@ -22,6 +22,9 @@ from glob import glob
 from config_reader import get_rosters_path
 from user_messages import log
 
+# Container folder for all archived assignment folders (inside class folder)
+ARCHIVED_FOLDERS_NAME = "Archived Folders"
+
 
 def extract_class_code(class_folder_name: str) -> str:
     """
@@ -125,6 +128,7 @@ def format_size(size_bytes: int) -> str:
 def list_processing_folders(class_folder_path: str) -> list[dict[str, str]]:
     """
     List all 'grade processing [Assignment]' and 'archived [Assignment]' folders in the class folder.
+    Archived folders are listed from both the class folder root and from class_folder/Archived Folders/.
     
     Returns:
         List of dicts with keys: name, path, size, modified
@@ -135,26 +139,31 @@ def list_processing_folders(class_folder_path: str) -> list[dict[str, str]]:
     folders = []
     processing_pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
     archived_pattern = re.compile(r'^archived (.+)$', re.IGNORECASE)
-    
-    for folder_name in os.listdir(class_folder_path):
-        folder_path = os.path.join(class_folder_path, folder_name)
+
+    def add_folder_if_match(folder_path: str, folder_name: str) -> None:
         if not os.path.isdir(folder_path):
-            continue
-        
-        # Check for both patterns
+            return
         processing_match = processing_pattern.match(folder_name)
         archived_match = archived_pattern.match(folder_name)
-        
         if processing_match or archived_match:
             size = get_folder_size(folder_path)
             modified = os.path.getmtime(folder_path)
-            
             folders.append({
-                'name': folder_name,  # Use full folder name including "grade processing" or "archived"
+                'name': folder_name,
                 'path': folder_path,
                 'size': format_size(size),
                 'modified': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(modified))
             })
+
+    for folder_name in os.listdir(class_folder_path):
+        folder_path = os.path.join(class_folder_path, folder_name)
+        add_folder_if_match(folder_path, folder_name)
+
+    archived_container = os.path.join(class_folder_path, ARCHIVED_FOLDERS_NAME)
+    if os.path.isdir(archived_container):
+        for folder_name in os.listdir(archived_container):
+            folder_path = os.path.join(archived_container, folder_name)
+            add_folder_if_match(folder_path, folder_name)
     
     # Sort by modification time (newest first)
     folders.sort(key=lambda x: x['modified'], reverse=True)
@@ -164,7 +173,7 @@ def list_processing_folders(class_folder_path: str) -> list[dict[str, str]]:
 
 def clear_all_archived_data(class_folder_path: str) -> int:
     """
-    Clear all 'archived [Assignment]' folders in the class folder.
+    Clear all 'archived [Assignment]' folders in the class folder (root and inside Archived Folders).
     
     Returns:
         deleted_count
@@ -175,23 +184,26 @@ def clear_all_archived_data(class_folder_path: str) -> int:
     
     deleted_count = 0
     pattern = re.compile(r'^archived (.+)$', re.IGNORECASE)
-    
-    for folder_name in os.listdir(class_folder_path):
-        folder_path = os.path.join(class_folder_path, folder_name)
-        if not os.path.isdir(folder_path):
-            continue
-        
-        match = pattern.match(folder_name)
-        if match:
-            # Force close any explorer windows showing this folder
-            close_explorer_windows_for_path(folder_path)
-            time.sleep(0.5)  # Give Windows time to close the window
-            
-            if safe_remove_tree(folder_path):
-                deleted_count += 1
-                log("CLEAR_DELETED", folder_name=folder_name)
-            else:
-                log("ERR_CLEAR_FAILED_DELETE")
+
+    def delete_archived_in_dir(dir_path: str) -> None:
+        nonlocal deleted_count
+        if not os.path.exists(dir_path):
+            return
+        for folder_name in os.listdir(dir_path):
+            folder_path = os.path.join(dir_path, folder_name)
+            if not os.path.isdir(folder_path):
+                continue
+            if pattern.match(folder_name):
+                close_explorer_windows_for_path(folder_path)
+                time.sleep(0.5)
+                if safe_remove_tree(folder_path):
+                    deleted_count += 1
+                    log("CLEAR_DELETED", folder_name=folder_name)
+                else:
+                    log("ERR_CLEAR_FAILED_DELETE")
+
+    delete_archived_in_dir(class_folder_path)
+    delete_archived_in_dir(os.path.join(class_folder_path, ARCHIVED_FOLDERS_NAME))
     
     return deleted_count
 
@@ -254,12 +266,14 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
         if os.path.exists(unzipped_folder):
             safe_remove_tree(unzipped_folder)
         
-        # Rename folder to 'archived [Assignment]'
+        # Move folder to 'Archived Folders/archived [Assignment]'
         match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
         if match:
             assignment_name = match.group(1)
             new_folder_name = f"archived {assignment_name}"
-            new_folder_path = os.path.join(parent_folder, new_folder_name)
+            archived_root = os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME)
+            os.makedirs(archived_root, exist_ok=True)
+            new_folder_path = os.path.join(archived_root, new_folder_name)
             
             # If archived folder already exists, remove it first
             if os.path.exists(new_folder_path):
@@ -304,12 +318,14 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
         if os.path.exists(unreadable_folder):
             safe_remove_tree(unreadable_folder)
         
-        # Rename folder to 'archived [Assignment]'
+        # Move folder to 'Archived Folders/archived [Assignment]'
         match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
         if match:
             assignment_name = match.group(1)
             new_folder_name = f"archived {assignment_name}"
-            new_folder_path = os.path.join(parent_folder, new_folder_name)
+            archived_root = os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME)
+            os.makedirs(archived_root, exist_ok=True)
+            new_folder_path = os.path.join(archived_root, new_folder_name)
             
             # If archived folder already exists, remove it first
             if os.path.exists(new_folder_path):
@@ -338,15 +354,19 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
         if safe_remove_tree(folder_path):
             log("CLEAR_DELETED", folder_name=folder_name)
             
-            # Also delete corresponding archived folder if it exists
+            # Also delete corresponding archived folder (check root and Archived Folders)
             match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
             if match:
                 assignment_name = match.group(1)
                 archived_folder_name = f"archived {assignment_name}"
-                archived_folder_path = os.path.join(parent_folder, archived_folder_name)
-                if os.path.exists(archived_folder_path):
-                    if safe_remove_tree(archived_folder_path):
-                        log("CLEAR_DELETED", folder_name=archived_folder_name)
+                for archived_path in (
+                    os.path.join(parent_folder, archived_folder_name),
+                    os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME, archived_folder_name),
+                ):
+                    if os.path.exists(archived_path):
+                        if safe_remove_tree(archived_path):
+                            log("CLEAR_DELETED", folder_name=archived_folder_name)
+                        break
             
             return True
         else:
@@ -354,26 +374,31 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
             return False
     elif save_mode == 'delete_everything':
         # Delete the entire folder completely (for selected folders)
-        # This is the same as delete_all_with_archived - removes both processing and archived
+        # Removes both processing and archived; if selected folder is archived, also remove processing
         if safe_remove_tree(folder_path):
             log("CLEAR_DELETED", folder_name=folder_name)
             
-            # Also delete corresponding archived folder if it exists
+            # If this was a processing folder, delete corresponding archived (root or Archived Folders)
             match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
             if match:
                 assignment_name = match.group(1)
                 archived_folder_name = f"archived {assignment_name}"
-                archived_folder_path = os.path.join(parent_folder, archived_folder_name)
-                if os.path.exists(archived_folder_path):
-                    if safe_remove_tree(archived_folder_path):
-                        log("CLEAR_DELETED", folder_name=archived_folder_name)
+                for archived_path in (
+                    os.path.join(parent_folder, archived_folder_name),
+                    os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME, archived_folder_name),
+                ):
+                    if os.path.exists(archived_path):
+                        if safe_remove_tree(archived_path):
+                            log("CLEAR_DELETED", folder_name=archived_folder_name)
+                        break
             
-            # Also handle if this IS an archived folder
+            # If this was an archived folder, delete corresponding processing (always in class root)
             match = re.match(r'^archived (.+)$', folder_name, re.IGNORECASE)
             if match:
                 assignment_name = match.group(1)
                 processing_folder_name = f"grade processing {assignment_name}"
-                processing_folder_path = os.path.join(parent_folder, processing_folder_name)
+                class_root = os.path.dirname(parent_folder) if os.path.basename(parent_folder) == ARCHIVED_FOLDERS_NAME else parent_folder
+                processing_folder_path = os.path.join(class_root, processing_folder_name)
                 if os.path.exists(processing_folder_path):
                     if safe_remove_tree(processing_folder_path):
                         log("CLEAR_DELETED", folder_name=processing_folder_name)

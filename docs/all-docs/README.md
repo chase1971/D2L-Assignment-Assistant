@@ -233,7 +233,7 @@ Following these patterns provides:
 
 ## Resources
 
-- **Project Documentation**: `../PROJECT_STRUCTURE.md`
+- **Project Documentation**: `PROJECT_SYNOPSIS.md` (this directory)
 - **Cursor Rules**: `../.cursorrules`
 - **Python Style Guide**: [PEP 8](https://pep8.org/)
 - **Selenium Documentation**: [selenium.dev](https://www.selenium.dev/documentation/)

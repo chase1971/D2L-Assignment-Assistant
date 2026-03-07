@@ -90,9 +90,9 @@ def find_zip_file(
     
     Returns:
         Tuple of (zip_path, error_response_dict):
-        - If single ZIP found or specific_zip provided: (zip_path, None)
+        - If specific_zip provided and exists: (zip_path, None)
         - If no ZIPs found: (None, error_response_dict)
-        - If multiple ZIPs found: (None, error_response_dict with zip_files list)
+        - If one or more ZIPs found (no specific_zip): (None, error_response_dict with zip_files list for user selection)
     """
     if specific_zip:
         if os.path.exists(specific_zip):
@@ -106,22 +106,18 @@ def find_zip_file(
     if not zip_files:
         return None, make_error_response("ERR_NO_ZIP")
     
-    # If multiple ZIP files, return for user selection
-    if len(zip_files) > 1:
-        error_response = {
-            "success": False,
-            "error": "Multiple ZIP files found",
-            "message": "Please select which ZIP file to process",
-            "zip_files": [
-                {"index": i+1, "filename": os.path.basename(zip_file), "path": zip_file} 
-                for i, zip_file in enumerate(zip_files)
-            ],
-            "logs": logs or []  # Only include logs up to this point (no file list)
-        }
-        return None, error_response
-    
-    # Only one ZIP file found
-    return zip_files[0], None
+    # One or more ZIP files: always return for user selection (do not auto-select)
+    error_response = {
+        "success": False,
+        "error": "Multiple ZIP files found" if len(zip_files) > 1 else "Please select which ZIP file to process",
+        "message": "Please select which ZIP file to process",
+        "zip_files": [
+            {"index": i+1, "filename": os.path.basename(zip_file), "path": zip_file}
+            for i, zip_file in enumerate(zip_files)
+        ],
+        "logs": logs or []
+    }
+    return None, error_response
 
 
 class ProcessingResult:

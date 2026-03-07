@@ -34,7 +34,7 @@ This script will:
 npm run dev:all
 ```
 
-See [PROJECT_SYNOPSIS.md](PROJECT_SYNOPSIS.md) for detailed development documentation.
+See [docs/all-docs/PROJECT_SYNOPSIS.md](docs/all-docs/PROJECT_SYNOPSIS.md) for detailed development documentation.
 
 ## Key Features
 
@@ -67,13 +67,13 @@ D2L-Assignment-Assistant/
 ├── server.js               # Node.js backend (Express)
 ├── BUILD.bat               # Build script
 ├── package.json            # Dependencies and scripts
-├── PROJECT_SYNOPSIS.md     # Detailed architecture documentation
+├── docs/all-docs/          # Documentation (PROJECT_SYNOPSIS.md, etc.)
 └── CHANGELOG.md            # Version history
 ```
 
 ## Documentation
 
-- **[PROJECT_SYNOPSIS.md](PROJECT_SYNOPSIS.md)**: Complete architecture, workflows, and development guide
+- **[docs/all-docs/PROJECT_SYNOPSIS.md](docs/all-docs/PROJECT_SYNOPSIS.md)**: Complete architecture, workflows, and development guide
 - **[CHANGELOG.md](CHANGELOG.md)**: Version history and release notes
 - **docs/archived/**: Older documentation (kept for reference)
 
@@ -81,7 +81,7 @@ D2L-Assignment-Assistant/
 
 This is beta software. If you encounter issues:
 1. Check the logs in the application
-2. Review [PROJECT_SYNOPSIS.md](PROJECT_SYNOPSIS.md) for technical details
+2. Review [docs/all-docs/PROJECT_SYNOPSIS.md](docs/all-docs/PROJECT_SYNOPSIS.md) for technical details
 3. Ensure your class folder structure matches the expected format
 
 ## License

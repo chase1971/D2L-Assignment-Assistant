@@ -1,5 +1,7 @@
 # Refactoring Plan: `Option2.tsx` (D2L Assignment Assistant)
 
+**Archived:** This plan was executed; Option2 was refactored into hooks and components. Kept for reference.
+
 ## Problem
 `Option2.tsx` is a **1,967-line** React component that contains all state, handlers, business logic, and JSX for the main UI. Key issues:
 - **35 useState declarations** crammed into one component

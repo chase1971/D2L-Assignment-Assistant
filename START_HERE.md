@@ -19,7 +19,7 @@ This is a desktop application (Electron + React + Python) for grading D2L/Bright
 **Read in this order:**
 
 1. **START_HERE.md** (this file) - First-time setup and orientation
-2. **PROJECT_SYNOPSIS.md** - Complete system architecture  
+2. **docs/all-docs/PROJECT_SYNOPSIS.md** - Complete system architecture  
 3. **README.md** - Installation, dependencies, and usage
 4. **END_OF_SESSION_CHECKLIST.md** - Development workflow
 5. **.cursorrules** - AI coding guidelines
@@ -129,8 +129,8 @@ D2L-Assignment-Assistant/
 │   ├── main.js                 # Entry point
 │   └── preload.js              # IPC bridge
 │
-├── server/                     # Node.js backend
-│   ├── app.js                  # Express server
+├── server/                     # Node.js backend (loaded by server.js)
+│   ├── app.js                  # Express app
 │   └── routes/                 # API routes
 │
 ├── scripts/                    # Python CLI scripts
@@ -143,6 +143,7 @@ D2L-Assignment-Assistant/
 │   ├── ocr_utils.py            # OCR integration
 │   └── ...
 │
+├── server.js                   # Backend launcher (runs server/app.js)
 ├── .env                        # API keys (NOT in Git)
 ├── .env.example                # Template for .env
 ├── requirements.txt            # Python dependencies
@@ -289,7 +290,7 @@ This app uses a dual-channel logging system:
 
 1. **This file** - Orientation ✓
 2. **REMOVE_DRIVE_DETECTION.md** - Remove user-specific logic (REQUIRED)
-3. **PROJECT_SYNOPSIS.md** - Full architecture
+3. **docs/all-docs/PROJECT_SYNOPSIS.md** - Full architecture
 4. **.cursorrules** - Coding guidelines
 5. **grading_processor.py** - Core workflow
 6. **Option2.tsx** - Frontend controller
@@ -330,7 +331,7 @@ This app uses a dual-channel logging system:
 4. Set up `.env` file
 5. Install dependencies
 6. Test with sample data
-7. Read PROJECT_SYNOPSIS.md for full understanding
+7. Read docs/all-docs/PROJECT_SYNOPSIS.md for full understanding
 
 ---
 
