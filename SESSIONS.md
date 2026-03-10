@@ -48,6 +48,32 @@
 
 ---
 
+## 2026-03-10 - Fix Split-and-Rezip Using Wrong PDF
+
+**What we did:**
+- Diagnosed bug where split-and-rezip was splitting the `_GRADES_ONLY` PDF (first pages only) instead of the full multi-page combined PDF
+- The root cause: the file picker filtered for any PDF containing "combined PDF" in the name, and since `_GRADES_ONLY` is created after the original, it was the newest file and got selected
+- Fixed by excluding `_GRADES_ONLY` files from the search
+
+**Files modified:**
+- `python-modules/grading_processor.py` — added `and 'GRADES_ONLY' not in f` to the combined PDF file picker in `run_reverse_process()`
+
+**Patterns used:**
+- Minimal change — one line fix
+
+**Next session tasks:**
+- [ ] Test split-and-rezip end-to-end with a real quiz to confirm graded multi-page PDFs are returned correctly
+
+**Technical debt:**
+- None introduced
+
+**Notes:**
+- The `_GRADES_ONLY` PDF exists purely to reduce data sent to Google Vision API (only first pages needed for OCR). It should never be used as the source for splitting.
+- The full graded combined PDF is never deleted by the split-and-rezip flow — a missing file in one instance was a Google Drive sync delay (large file)
+- Committed and pushed to GitHub (commit 94f7e59)
+
+---
+
 ## Session Template (Copy for Future Sessions)
 
 ```markdown
@@ -79,4 +105,4 @@
 
 ---
 
-**Last Updated:** 2026-02-05
+**Last Updated:** 2026-03-10
