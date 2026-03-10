@@ -73,7 +73,10 @@ D2L-Assignment-Assistant/
 
 ## Documentation
 
+- **[docs/README.md](docs/README.md)**: Documentation index (start here to find everything)
+- **[START_HERE.md](START_HERE.md)**: First-time setup and orientation
 - **[docs/all-docs/PROJECT_SYNOPSIS.md](docs/all-docs/PROJECT_SYNOPSIS.md)**: Complete architecture, workflows, and development guide
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**: Making the app work for other professors (paths, config)
 - **[CHANGELOG.md](CHANGELOG.md)**: Version history and release notes
 - **docs/archived/**: Older documentation (kept for reference)
 

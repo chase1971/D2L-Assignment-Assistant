@@ -1,243 +1,107 @@
 # D2L Assignment Assistant - Cursor Rules
 
-## 🚨 CRITICAL: Read This First
+## Read First
 
-**Before making ANY changes to this codebase, read `START_HERE.md` in this directory.**
+**Before making changes, read `START_HERE.md`.** For configuration and making the app work for other professors, read **`docs/CONFIGURATION.md`**. Full architecture: **`docs/all-docs/PROJECT_SYNOPSIS.md`**. Doc index: **`docs/README.md`**.
 
-**Why?**
-- Explains user-specific configuration (drive detection)
-- Points to all documentation
-- Shows folder structure requirements
-- Lists safe vs fragile areas
+---
+
+## Goal: Make This App Distributable to Other Professors
+
+This codebase was built for one developer's machine. A main task is to **remove hardcoded, user-specific behavior** so any professor can install and use it.
+
+### What "distributable" means here
+
+- **No hardcoded paths** — Rosters path, downloads path, and class folders come from config (e.g. `config.json`) or first-run/CLASS SETUP, not from code.
+- **No hardcoded usernames or drive letters** — No `"chase"`, `C:`/`G:` logic, or machine-specific fallbacks in code. Path resolution lives in one place (e.g. `config_reader.py`) and reads from config.
+- **Clear first-run experience** — New users are guided to set rosters folder (and optionally downloads). Document where config is stored (e.g. `%APPDATA%\D2L Assignment Assistant\` or project root in dev).
+- **Secrets in environment** — API keys (e.g. Google Vision) stay in `.env`; never commit them. Use `.env.example` as a template.
+
+### When changing path or config behavior
+
+1. **Find all usages** — Search for path strings, `get_rosters_path`, `get_drive`, and any `drive` parameter. Update callers to use the single source of truth (e.g. `config_reader`).
+2. **One source of truth** — Prefer one module (e.g. `config_reader.py`) that reads from file/env. Other code only calls getters like `get_rosters_path()`, `get_downloads_path()`.
+3. **Update docs** — After changing where or how config is read, update `docs/CONFIGURATION.md` and, if needed, `START_HERE.md` and `PROJECT_SYNOPSIS.md`.
+
+---
+
+## AI Programming Tips (For Students Using AI to Modify This App)
+
+### Before you change behavior
+
+- **Read the relevant docs** — START_HERE, docs/README.md, PROJECT_SYNOPSIS, CONFIGURATION. Know how paths and config work before changing them.
+- **Read the code you’re about to change** — Open the file, see how it’s used, check callers. Don’t refactor from assumptions.
+
+### Making changes safely
+
+- **One logical change at a time** — e.g. “switch rosters path to config only” then test, then “remove drive parameter from CLI” then test. Don’t bundle unrelated edits.
+- **Test after each step** — Run the app or the affected script; confirm paths and behavior. Use a test class/folder if possible.
+- **Search before replacing** — When removing a pattern (e.g. `drive` argument), grep for all usages (backend, frontend, CLI) and update or remove them together.
+
+### Working with the AI
+
+- **Be specific** — “Replace the hardcoded fallback in `config_reader.get_rosters_path()` with config-only; if rostersPath is missing, show a clear error” is better than “make config work.”
+- **Ask for a plan first for big changes** — For multi-file or config-wide changes, ask for a short list of files and steps, then implement step by step.
+- **Confirm before deleting or renaming** — Don’t delete files, remove public functions, or rename APIs without explicit confirmation. Prefer “add new, then migrate” over “delete and replace” when unsure.
+
+### Code and config
+
+- **Prefer config over code edits** — For paths and per-user settings, add or use config keys and document them in CONFIGURATION.md. Avoid new hardcoded paths or usernames.
+- **Document new config keys** — If you add a setting (config.json or .env), add it to CONFIGURATION.md and, if user-facing, to START_HERE or README.
 
 ---
 
 ## Project Overview
-This is a desktop application for grading D2L/Brightspace assignment submissions. It has a React frontend, Node.js backend (server.js), and Python scripts for PDF processing and grade extraction.
 
-**Development Phase: Polish** - Handle edge cases, improve error messages, clean up shortcuts.
+Desktop app (Electron + React + Python) for grading D2L/Brightspace submissions: extract from ZIPs, combine PDFs, OCR grades, update Import File.csv. React frontend, Node/Express backend, Python scripts in `scripts/` and shared logic in `python-modules/`.
 
 ---
 
 ## Pattern Files
 
-### Local Project Patterns (.cursor-patterns/)
-**Located in this project's `.cursor-patterns/` folder:**
-- `d2l-automation.md` - D2L/Playwright/Selenium automation patterns
-- `selenium-patterns.md` - WebDriver patterns, element interaction, waits
-- `code-style.md` - Python style guidelines, error handling, logging
-- `refactoring-checklist.md` - Phased refactoring approach (Phase 1-5)
-- `README.md` - Guide to using these patterns
+**Local (this project):** `.cursor-patterns/` — d2l-automation.md, selenium-patterns.md, code-style.md, refactoring-checklist.md, README.md.
 
-### Global Patterns (cursor-patterns folder)
-**Located at `C:\Users\chase\Documents\Programs\cursor-patterns\`:**
-- `coding-standards.md` - Code quality, naming conventions
-- `refactoring-checklist.md` - Cleanup phases
-- `anti-patterns.md` - Common mistakes to avoid
-- `logging-standards.md` - Emoji catalog and message formats
+**Use them for:** automation patterns, Python/TS style, refactoring steps. Check patterns before adding new automation or style.
 
 ---
 
-## Quick Reference: Coding Standards
+## Coding Standards (Quick Reference)
 
-### Naming Conventions
-- **Python**: `snake_case` for functions/variables
-- **TypeScript**: `camelCase` for functions/variables
-- **React Components**: `PascalCase`
-- **Constants**: `UPPER_SNAKE_CASE`
-
-### Core Principles
-- **DRY**: Extract common code into helpers
-- **Single Responsibility**: Each function does ONE thing
-- **Fail Fast**: Validate inputs early, return early for edge cases
-- **API Responses**: Always `{ success, error?, data? }` shape
-
-### File Size Limits
-- Max 800 lines per file
-- Extract to separate modules when approaching limit
-
-### Helper Function Pattern (Python)
-```python
-def make_error_response(error_msg: str, logs: list = None) -> dict:
-    return {"success": False, "error": error_msg, "logs": (logs or []) + [error_msg]}
-```
+- **Python:** snake_case; **TypeScript:** camelCase; **Components:** PascalCase; **Constants:** UPPER_SNAKE_CASE.
+- **DRY, single responsibility, fail fast.** API responses: `{ success, error?, data? }` shape.
+- **Max ~800 lines per file** — split or extract when approaching.
+- **User-facing logs:** Use the `user_messages` catalog in `python-modules/user_messages/` (log with keys; use emojis for user-facing messages). No raw print for UI log stream.
 
 ---
 
-## Planning Guidelines (For Cursor Plan Mode)
+## Architecture (Quick Reference)
 
-### When to Create a Plan
-
-Create a structured plan when the task involves:
-- Multiple files (3+)
-- UI → logic wiring
-- State management changes
-- Integration with existing systems
-
-**Do NOT plan for:**
-- Single file edits
-- Adding helper functions
-- Bug fixes in isolated code
-- Small refactors
-
-### Default Planning Format (BRIEF)
-
-Use this format for execution-focused tasks:
-
-```
-FILES TO MODIFY:
-1. <filename> - <one line description>
-2. <filename> - <one line description>
-
-EXECUTION ORDER:
-1. <action> (<file affected>)
-2. <action> (<file affected>)
-
-DO NOT TOUCH:
-- <file/component> - <reason>
-
-RISKS/UNKNOWNS:
-- <potential issue to verify>
-```
-
-**Rules for brief plans:**
-- No prose, no paragraphs - only structured lists
-- One line per item (under 15 words)
-- No code snippets in plans
-- Maximum 30 lines total
-- Token usage: 5-10% of what implementation would take
-
-### When to Use DETAILED Planning
-
-Use detailed planning (ignore brevity rules) when user asks for:
-
-**1. Greenfield Application Architecture**
-- User says: "I have an idea for an app..." or "Design a new application..."
-- Include: architecture overview, tech stack with rationale, data model, component hierarchy
-
-**2. Complex Refactoring Strategy**
-- User says: "How should I refactor..." or "What's the best way to restructure..."
-- Include: current vs proposed architecture, migration path, testing strategy
-
-**3. System Design / Technical Decisions**
-- User says: "Should I use X or Y?" or "What's the best approach for..."
-- Include: multiple approaches with pros/cons, trade-off analysis, recommendations
-
-**4. Learning / Educational Context**
-- User says: "Explain how..." or "Teach me about..."
-- Include: conceptual explanations, examples, step-by-step breakdowns
-
-### Code Quality During Planning
-
-When planning implementation:
-- **DO** follow good practices by default (clear names, proper structure, error handling)
-- **DO** get it working first, then refactor if needed
-- **DON'T** obsess over arbitrary limits (e.g., "line 499 exceeds 400 line limit, must split NOW")
-- **DON'T** over-engineer before proving it works
-
-**Philosophy**: Build it right the first time where practical, but don't let perfect be the enemy of done.
-
-### After Creating a Plan
-
-1. **Stop and wait for approval**
-2. Do NOT automatically start implementing
-3. If approved, implement ONE step at a time when directed
-4. If told "implement step 1", only do step 1, then stop
+- **Frontend:** Option2.tsx (main UI), LogTerminal.tsx, quizGraderService.ts.
+- **Backend:** server.js (Express), runs Python via subprocess; respects patch overlay (see docs).
+- **Config/paths:** config_reader.py (get_rosters_path, get_downloads_path, get_drive). Config file from app userData or project root in dev.
+- **Python:** scripts/*.py (CLIs), python-modules/*.py (grading_processor, import_file_handler, pdf_operations, ocr_utils, user_messages, etc.).
 
 ---
 
-## Quick Reference: Refactoring Checklist
+## Planning (When to Use a Plan)
 
-### Phase 1: Quick Wins
-- [ ] Remove dead code
-- [ ] Magic numbers → named constants
-- [ ] Consolidate duplicate code
+**Use a short plan when:** Multiple files (3+), UI↔backend wiring, config/path changes, new workflows.
 
-### Phase 2: Structure
-- [ ] Split files over 800 lines
-- [ ] Group related functions
-- [ ] Extract helper modules
+**Don’t plan for:** Single-file edits, small bug fixes, adding a helper.
 
-### Phase 3: Patterns
-- [ ] Consistent error handling
-- [ ] Input validation at boundaries
-- [ ] API response standardization
+**After a plan:** Wait for approval. Implement one step at a time when directed.
 
 ---
 
-## Critical Rule: User-Facing Log Management
+## Refactoring Quick Checklist
 
-**The application uses a dual-channel logging system:**
-- `user_log(message)` - User-facing messages (shown in frontend)
-- `dev_log(message)` - Developer/debug messages (hidden from users)
-
-### Log Message Workflow:
-1. **Edit logs**: Open `edit_user_logs_gui.py` to visually edit all user-facing log messages
-2. **Save changes**: GUI saves to `editable_user_logs.json`
-3. **Apply to code**: Inform assistant of changes to update source files
-
-### Files that generate user-facing logs:
-- `process_quiz_cli.py` - Quiz processing messages
-- `process_completion_cli.py` - Completion processing messages
-- `extract_grades_cli.py` - Grade extraction messages
-- `split_pdf_cli.py` - PDF split messages
-- `clear_data_cli.py` - Data cleanup messages
-- `helper_cli.py` - Folder/class loading messages
-- `grading_processor.py` - Processing status messages
-- `src/components/Option2.tsx` - Frontend log messages (addLog calls)
+- Phase 1: Remove dead code; magic numbers → constants; consolidate duplicates.
+- Phase 2: Split files over ~800 lines; extract helpers.
+- Phase 3: Consistent error handling; validate at boundaries; standard API shape.
 
 ---
 
-## Architecture
+## Error Messages and Logs
 
-### Frontend (React + TypeScript)
-- `src/components/Option2.tsx` - Main UI component
-- `src/components/LogTerminal.tsx` - Log display terminal
-- `src/services/quizGraderService.ts` - API calls to backend
-
-### Backend (Node.js)
-- `server.js` - Express server, routes Python script calls
-
-### Python Scripts
-- `grading_processor.py` - Core processing logic
-- `import_file_handler.py` - CSV import file operations
-- `pdf_operations.py` - PDF creation and splitting
-- `extract_grades_cli.py` - OCR grade extraction
-- `process_quiz_cli.py` - Quiz processing CLI
-- `process_completion_cli.py` - Completion processing CLI
-- `split_pdf_cli.py` - PDF split and rezip CLI
-
----
-
-## Code Style
-
-### Python
-- Use Rich library for terminal output (only when not returning JSON)
-- Return clean JSON to stdout for backend parsing
-- Use logging to files, not console, for technical messages
-
-### TypeScript/React
-- Use Tailwind CSS for styling
-- Use the `addLog()` function for user-facing messages
-- Keep error messages user-friendly (no JSON, no technical details)
-
----
-
-## Error Messages
-
-All error messages should:
-- Start with ❌ emoji
-- Be human-readable (no JSON, no stack traces)
-- Suggest a fix when possible
-- Be added to `preview_user_messages.py`
-
----
-
-## ZIP File Selection
-
-When multiple ZIP files are found in Downloads:
-- Return clean JSON (no Rich console output before JSON)
-- Frontend shows ZipSelectionModal
-- Don't log the file list - just show the modal
-- After selection, log "📦 Processing: [filename]"
-
+- User-facing errors: clear, human-readable; suggest a fix when possible. Use the user_messages catalog.
+- No stack traces or raw JSON in user-facing messages. Use emojis (e.g. ❌ ✅) where the catalog/style guide specifies.

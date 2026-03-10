@@ -224,6 +224,14 @@ The following files can be patched:
 - `user_messages/catalog.py`
 - And any other `.py` files in `python-modules/`
 
+## Implementation summary
+
+The patch system is implemented as follows. (Full usage is above.)
+
+- **Backend:** `patch-manager.js` — patch lookup and application; integrated into `server.js` so Python script execution checks the patch folder first.
+- **Frontend:** `src/components/PatchManager.tsx` — UI; `NavigationBar.tsx` — PATCHES button; `quizGraderService.ts` — patch API calls.
+- **Tooling:** `CREATE_PATCH.bat` — creates patch ZIPs. Patches live in `%APPDATA%\D2L Assignment Assistant\patches\` and override bundled scripts; originals are never modified. Restart is required after import.
+
 ## Support
 
 If you encounter issues with the patch system:

@@ -383,6 +383,8 @@ python dev-tools/test_scenario_runner.py
 
 ## Configuration
 
+**First-time setup and making the app work for other professors:** See **docs/CONFIGURATION.md** for path/config behavior, hardcoded fallbacks, and what to change.
+
 ### `config.json` (User Configuration)
 
 Created automatically on first run:

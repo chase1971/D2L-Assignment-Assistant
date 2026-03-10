@@ -1,272 +1,118 @@
-# End-of-Session Checklist
+# End of Session Checklist
 
-> **Copy this prompt block and paste it to AI at the end of EVERY coding session.**
+**Do this at the end of every coding session** so the next session (or future you) can pick up cleanly.
+
+**Last completed:** _(Update this line when you finish a session — e.g. "2026-03-10 — Consolidated docs, .cursorrules for distributable app, CONFIGURATION.md.")_
 
 ---
 
-## 🎯 Quick Copy-Paste Prompt
+## Do at end of every session
 
+1. **Summarize what happened** — In a sentence or two: main goal and what you shipped or changed.
+2. **Add (or update) a session entry in `SESSIONS.md`** — Date (YYYY-MM-DD), goal, files created/modified (with line counts for large files), changes summary, testing done, next session priorities. Optionally: known issues, technical debt.
+3. **Update file headers in modified `.py` files** — Set `LAST VERIFIED` to today’s date; update `SAFE TO MODIFY` or `FRAGILE` sections if needed.
+4. **File size check** — List modified files with current line count. Flag anything approaching 800+ lines (see .cursorrules); note if extraction/splitting is needed.
+5. **Quick verification** — At least: app runs (`npm run dev:all` or run backend + frontend), `npm run build` passes, no new linter errors on modified files. If you touched Python scripts: run the affected flow (e.g. Process Quiz, Extract Grades) once.
+6. **Optional but useful** — Note any known issues or shortcuts taken; write down the top 1–3 next-session priorities.
+
+**Quick prompt you can paste to AI:**
 ```
-End of session checklist:
-
-1. Create a session summary in SESSIONS.md with today's date (YYYY-MM-DD):
-   - What we did this session
-   - Files created/modified
-   - Next session tasks
-
-2. Update file headers in all modified .py files:
-   - Set LAST VERIFIED to today's date
-   - Update SAFE TO MODIFY if changed
-   - Update FRAGILE sections if needed
-
-3. Review our changes against docs/all-docs/PROJECT_SYNOPSIS.md:
-   - Did we follow all patterns correctly?
-   - Does documentation need updating?
-
-4. Check if we created new patterns:
-   - Add to docs/all-docs/PROJECT_SYNOPSIS.md if reusable
-   - Update "Last Updated" date
+End of session. Do the end-of-session checklist:
+1. Summarize what we did and add a session entry to SESSIONS.md (today's date, goal, files modified with line counts, summary, next priorities).
+2. Update file headers in all modified .py files (LAST VERIFIED = today).
+3. List modified files with line counts; flag any approaching 800+ lines.
+4. Confirm build passes and no new linter errors; if we changed Python/backend flow, note what to verify (e.g. Process Quiz, Extract Grades).
 ```
 
 ---
 
-## 📋 Detailed Checklist
+## Template (fill this out, then add entry to SESSIONS.md)
 
-Use this for reference if you need more detail:
+Copy the template below and fill it out at the end of each development session. When you're done, **add a corresponding session entry to `SESSIONS.md`** (goal, files changed, summary, testing, next priorities) so the session history stays up to date.
 
-### ✅ **1. Session Documentation (Required Every Session)**
+### Session — YYYY-MM-DD — [Brief title]
 
-**File:** `SESSIONS.md`
+**Status:** _Completed / In progress_
 
-**What to add:**
-```markdown
-## YYYY-MM-DD - [Brief Title]
+#### 1. Files modified
+- **Modified:** `path/to/file.py` (N lines)
+- **Created:** `path/to/newfile.ts` (N lines)
 
-**What we did:**
-- Feature/change 1
-- Feature/change 2
+#### 2. Changes summary
+- **Main goal:** _One line._
+- **Accomplished:** _Bullet list of what you did._
+- **Remains (if any):** _What’s left or deferred._
 
-**Files created:**
-- path/to/file.py (description)
+#### 3. File size check
+- `Option2.tsx`: **N lines** — _✓ OK / ⚠️ approaching 800_
+- _List other modified files with line counts._
 
-**Files modified:**
-- path/to/file.py (what changed)
+#### 4. File headers
+- [ ] All modified `.py` files have `LAST VERIFIED: YYYY-MM-DD` (and SAFE TO MODIFY / FRAGILE if needed).
 
-**Next session tasks:**
-- [ ] Task 1
-- [ ] Task 2
+#### 5. Testing
+- [ ] App runs (frontend + backend)
+- [ ] `npm run build` — ✓
+- [ ] No new linter errors on modified files
+- [ ] _If you touched a workflow:_ e.g. Process Quiz or Extract Grades run once and succeed
 
-**Technical debt:**
-- Any shortcuts taken
+#### 6. Documentation
+- [ ] Session entry added to `SESSIONS.md`
+- [ ] If significant: `docs/all-docs/PROJECT_SYNOPSIS.md` or `docs/CONFIGURATION.md` updated (and "Last updated" date)
+- [ ] If user-facing: `README.md` updated
 
-**Notes:**
-- Important decisions or observations
-```
+#### 7. Known issues (optional)
+- _Any shortcuts, TODOs, or things to fix next time._
 
-**AI Prompt:**
-```
-"Add a session entry to SESSIONS.md with today's date (YYYY-MM-DD),
-summarizing what we did, files modified, and next steps."
-```
-
----
-
-### ✅ **2. File Header Updates (Required for Modified Files)**
-
-**What files need updating:**
-- Any `.py` file we modified or created
-
-**What to update:**
-```
-LAST VERIFIED: YYYY-MM-DD
-
-SAFE TO MODIFY: (if changed)
-- Update what can be safely changed
-
-FRAGILE / HIGH-RISK AREAS: (if discovered new risks)
-- Add new areas that are risky to change
-```
-
-**AI Prompt:**
-```
-"Update file headers in [list files] with today's date (YYYY-MM-DD)
-in the LAST VERIFIED section."
-```
+#### 8. Next session priorities
+1. _First priority_
+2. _Second_
+3. _Third_
 
 ---
 
-### ✅ **3. docs/all-docs/PROJECT_SYNOPSIS.md Updates (If Significant Changes)**
+## Example session entry (for reference)
 
-**When to update:**
-- Added new module or function
-- Changed system architecture
-- Modified core workflows
-- Changed environment variable requirements
-- Discovered important patterns
+### Session — 2026-02-05 — Documentation and config setup
 
-**What to update:**
-```
-1. "Core Modules" section
-   - Add new modules
+**Status: Completed**
 
-2. "Customization Guide" section
-   - Add new configuration options
+#### 1. Files modified
+- **Created:** `START_HERE.md`
+- **Created:** `docs/CONFIGURATION.md`
+- **Modified:** `python-modules/ocr_utils.py` (load API key from .env)
+- **Modified:** `SESSIONS.md` (added this session)
 
-3. "Troubleshooting" section
-   - Add common issues encountered
+#### 2. Changes summary
+- **Main goal:** Add orientation docs and secure API keys.
+- **Accomplished:** START_HERE and CONFIGURATION guides; API key moved to .env; SESSIONS.md and END_OF_SESSION_CHECKLIST in place.
 
-4. "Last Updated" date
-   - Update to today's date
-```
+#### 3. File size check
+- All modified/created files under 800 lines ✓
 
-**AI Prompt:**
-```
-"Check if docs/all-docs/PROJECT_SYNOPSIS.md needs updating based on what we did.
-If yes, update the appropriate sections and set Last Updated to YYYY-MM-DD."
-```
+#### 4. File headers
+- [x] `ocr_utils.py` — LAST VERIFIED: 2026-02-05
 
----
+#### 5. Testing
+- [x] App runs
+- [x] `npm run build` — ✓
+- [x] No new linter errors
 
-### ✅ **4. README.md Updates (If User-Facing Changes)**
+#### 6. Documentation
+- [x] Session entry in SESSIONS.md
+- [x] PROJECT_SYNOPSIS / CONFIGURATION referenced where needed
 
-**When to update:**
-- New features added
-- Installation steps changed
-- New dependencies added
-- New environment variables needed
-
-**AI Prompt:**
-```
-"Update README.md to document the [feature] we just added."
-```
+#### 7. Next session priorities
+1. Add file headers to remaining Python modules
+2. Test with sample data after config path changes
 
 ---
 
-## ⏱️ Time Budget
+## Weekly review (optional)
 
-**Minimum (every session):**
-- Session summary: 1 min
-- File headers: 2 min
-- **Total: 3 minutes**
+**Once a week (e.g. Friday):**
+- Review `SESSIONS.md` for the past week; summarize what was accomplished.
+- Check for patterns that should be documented in PROJECT_SYNOPSIS or CONFIGURATION.
+- Triage "Next session priorities" and technical debt.
 
-**Standard (most sessions):**
-- Session summary: 1 min
-- File headers: 2 min
-- docs/all-docs/PROJECT_SYNOPSIS.md check: 2 min
-- **Total: 5 minutes**
-
-**Full (when adding major features):**
-- Session summary: 1 min
-- File headers: 2 min
-- docs/all-docs/PROJECT_SYNOPSIS.md update: 2 min
-- README.md update: 1 min
-- **Total: 6 minutes**
-
----
-
-## 🚦 Priority Levels
-
-### **🔴 High Priority (MUST do every session):**
-1. Session summary in SESSIONS.md
-2. File header updates
-
-### **🟡 Medium Priority (Do if applicable):**
-3. docs/all-docs/PROJECT_SYNOPSIS.md updates (if significant changes)
-4. README.md updates (if user-facing changes)
-
-### **🟢 Low Priority (Occasional):**
-5. Refactoring documentation
-6. Pattern extraction
-
----
-
-## 💡 Pro Tips
-
-### **Tip 1: Use AI to Generate the Summary**
-At the end of your session:
-```
-"Summarize everything we did this session for SESSIONS.md."
-```
-
-### **Tip 2: Batch File Header Updates**
-Instead of updating each file individually:
-```
-"Update file headers in all files we modified today with today's date."
-```
-
-### **Tip 3: Set a Timer**
-- Set a 5-minute timer at the end of your session
-- Run through the checklist quickly
-- Don't overthink it - just capture the essentials
-
-### **Tip 4: Weekly Review**
-Once a week (e.g., every Friday):
-```
-"Review SESSIONS.md for the past week and summarize what we accomplished.
-Check if there are patterns in our changes that should be documented."
-```
-
----
-
-## 🎯 The Lazy Version (Absolute Minimum)
-
-If you're short on time, just do this:
-
-```
-"Quick end-of-session: Add entry to SESSIONS.md with today's date,
-what we did, and what's next. Update file headers with today's date."
-```
-
-**Takes 2 minutes.**
-
----
-
-## 📝 Example Session End Prompt
-
-Here's a real example you can use:
-
-```
-End of session - 2026-02-05:
-
-1. Add session entry to SESSIONS.md:
-   - Today we secured API keys in .env file
-   - Created docs/all-docs/PROJECT_SYNOPSIS.md
-   - Modified ocr_utils.py to load from environment
-   - Next: Add file headers to all Python scripts
-
-2. Update file headers in:
-   - ocr_utils.py
-   - load_env.py
-   Set LAST VERIFIED to 2026-02-05
-
-3. Check: Did we update docs/all-docs/PROJECT_SYNOPSIS.md correctly?
-
-4. Review: Are all environment variables documented?
-```
-
----
-
-## 📅 Weekly Review (Optional but Recommended)
-
-**Every Friday or end of week:**
-
-```
-Weekly review checklist:
-
-1. Review SESSIONS.md entries from this week
-2. Look for repeated patterns that should be documented
-3. Check if any "Next session tasks" were forgotten
-4. Review "Technical debt" items - prioritize cleanup
-5. Update docs/all-docs/PROJECT_SYNOPSIS.md if patterns emerged
-6. Clean up any TODO comments in code
-```
-
-**AI Prompt:**
-```
-"Read SESSIONS.md and summarize what we accomplished this week.
-Are there any patterns we should add to docs/all-docs/PROJECT_SYNOPSIS.md?"
-```
-
----
-
-**Remember:** The goal is to keep documentation fresh so it actually helps you and AI in future sessions. Better to spend 5 minutes now than 30 minutes later trying to remember what you did! 🎯
+**Remember:** Doing this at the end of every session keeps the project easy to resume and helps anyone (or AI) understand what changed. Aim for a few minutes; the template and prompt above make it fast.
