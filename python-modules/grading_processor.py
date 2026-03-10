@@ -626,7 +626,7 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
         if not combined_pdf_path:
             log_raw("🔍 Finding combined PDF...", "INFO")
             if os.path.exists(pdf_output_folder):
-                pdf_files = [f for f in os.listdir(pdf_output_folder) if f.endswith('.pdf') and 'combined PDF' in f]
+                pdf_files = [f for f in os.listdir(pdf_output_folder) if f.endswith('.pdf') and 'combined PDF' in f and 'GRADES_ONLY' not in f]
                 if pdf_files:
                     # Sort by modification time (newest first)
                     pdf_files.sort(key=lambda f: os.path.getmtime(os.path.join(pdf_output_folder, f)), reverse=True)
