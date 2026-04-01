@@ -16,7 +16,7 @@ import json
 import zipfile
 import shutil
 import re
-from grading_processor import run_reverse_process
+from grading_processor import run_reverse_process, find_existing_unzipped_folder
 from grading_helpers import format_error_message
 from config_reader import get_downloads_path, get_rosters_path
 from user_messages import log, log_raw
@@ -291,9 +291,9 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, process
                 # No class code, use old format
                 processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
             
-            unzipped_folder = os.path.join(processing_folder, "unzipped folders")
+            unzipped_folder = find_existing_unzipped_folder(processing_folder)
         
-        if not os.path.exists(unzipped_folder):
+        if not unzipped_folder or not os.path.exists(unzipped_folder):
             log("SPLIT_UNZIPPED_NOT_FOUND")
             return False, None
         

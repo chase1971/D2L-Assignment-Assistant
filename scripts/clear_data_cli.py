@@ -24,6 +24,7 @@ from user_messages import log
 
 # Container folder for all archived assignment folders (inside class folder)
 ARCHIVED_FOLDERS_NAME = "Archived Folders"
+UNZIPPED_FOLDER_NAMES = ["unzipped folders", "u"]
 
 
 def extract_class_code(class_folder_name: str) -> str:
@@ -262,9 +263,10 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
             safe_remove_tree(unreadable_folder)
         
         # Delete unzipped folders
-        unzipped_folder = os.path.join(folder_path, "unzipped folders")
-        if os.path.exists(unzipped_folder):
-            safe_remove_tree(unzipped_folder)
+        for unzipped_folder_name in UNZIPPED_FOLDER_NAMES:
+            unzipped_folder = os.path.join(folder_path, unzipped_folder_name)
+            if os.path.exists(unzipped_folder):
+                safe_remove_tree(unzipped_folder)
         
         # Move folder to 'Archived Folders/archived [Assignment]'
         match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)

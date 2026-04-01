@@ -30,6 +30,10 @@ from grading_helpers import (
     get_versioned_pdf_path
 )
 
+DEFAULT_UNZIPPED_FOLDER_NAME = "unzipped folders"
+SHORT_UNZIPPED_FOLDER_NAME = "u"
+WINDOWS_PATH_LENGTH_LIMIT = 259
+
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -205,6 +209,51 @@ def validate_zip_structure(zip_path: str) -> bool:
         return False
 
 
+def get_unzipped_folder_candidates(processing_folder: str) -> List[str]:
+    """Return possible extraction folder paths, ordered by preference."""
+    return [
+        os.path.join(processing_folder, DEFAULT_UNZIPPED_FOLDER_NAME),
+        os.path.join(processing_folder, SHORT_UNZIPPED_FOLDER_NAME),
+    ]
+
+
+def find_existing_unzipped_folder(processing_folder: str) -> Optional[str]:
+    """Find the extraction folder used for this processing run, if any."""
+    for candidate in get_unzipped_folder_candidates(processing_folder):
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
+
+def choose_unzipped_folder(processing_folder: str, zip_path: Optional[str] = None) -> str:
+    """
+    Choose an extraction folder name.
+
+    On Windows, use a shorter folder name when the ZIP would push extracted
+    paths near the traditional MAX_PATH limit.
+    """
+    default_folder = os.path.join(processing_folder, DEFAULT_UNZIPPED_FOLDER_NAME)
+
+    if platform.system() != "Windows" or not zip_path:
+        return default_folder
+
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            longest_full_path = max(
+                (
+                    len(os.path.join(default_folder, member.replace('/', os.sep)))
+                    for member in zf.namelist()
+                ),
+                default=len(default_folder)
+            )
+        if longest_full_path > WINDOWS_PATH_LENGTH_LIMIT:
+            return os.path.join(processing_folder, SHORT_UNZIPPED_FOLDER_NAME)
+    except Exception:
+        pass
+
+    return default_folder
+
+
 def extract_zip_file(zip_path: str, extraction_folder: str) -> int:
     """Extract ZIP file to the grade processing folder"""
     from user_messages import log_raw
@@ -321,7 +370,7 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path):
             # Fallback if class code can't be extracted
             processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
         
-        unzipped_folder = os.path.join(processing_folder, "unzipped folders")
+        unzipped_folder = choose_unzipped_folder(processing_folder, zip_path)
         pdf_output_folder = os.path.join(processing_folder, "PDFs")
         unreadable_folder = os.path.join(processing_folder, "unreadable")
         
@@ -370,6 +419,7 @@ def _setup_processing_environment(
     drive_letter: str,
     class_folder_name: str,
     assignment_name: str,
+    zip_path: Optional[str] = None,
     overwrite: bool = False
 ) -> Tuple[str, str, str, str, str]:
     """
@@ -397,7 +447,7 @@ def _setup_processing_environment(
         # Fallback if class code can't be extracted
         processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
     
-    unzipped_folder = os.path.join(processing_folder, "unzipped folders")
+    unzipped_folder = choose_unzipped_folder(processing_folder, zip_path)
     pdf_output_folder = os.path.join(processing_folder, "PDFs")
     unreadable_folder = os.path.join(processing_folder, "unreadable")
     
@@ -429,6 +479,12 @@ def _extract_and_process_submissions(
     Returns:
         Tuple from process_submissions: (submitted, unreadable, no_submission, pdf_paths, name_map, student_errors, page_counts)
     """
+    if os.path.basename(unzipped_folder) != DEFAULT_UNZIPPED_FOLDER_NAME:
+        log_raw(
+            f"⚠ Using shorter extraction folder '{os.path.basename(unzipped_folder)}' to avoid Windows path length issues",
+            "WARNING"
+        )
+
     # Extract ZIP to unzipped folders subfolder
     extract_zip_file(zip_path, unzipped_folder)
     
@@ -612,11 +668,11 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
         
         log_raw(f"✓ Found: {os.path.basename(processing_folder)}", "INFO")
         
-        unzipped_folder = os.path.join(processing_folder, "unzipped folders")
+        unzipped_folder = find_existing_unzipped_folder(processing_folder)
         pdf_output_folder = os.path.join(processing_folder, "PDFs")
         
         # Check if unzipped folders exist (required for split operation)
-        if not os.path.exists(unzipped_folder):
+        if not unzipped_folder:
             log("SPLIT_NO_UNZIPPED")
             raise Exception("No unzipped folders found")
         
@@ -709,7 +765,7 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
 
         # Setup processing environment with assignment-specific folder
         class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder = _setup_processing_environment(
-            drive_letter, class_folder_name, assignment_name
+            drive_letter, class_folder_name, assignment_name, zip_path
         )
 
         # Load Import File (skip validation for process quizzes)
@@ -846,7 +902,7 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
 
         # Setup processing environment with assignment-specific folder
         class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder = _setup_processing_environment(
-            drive_letter, class_folder_name, assignment_name
+            drive_letter, class_folder_name, assignment_name, zip_path
         )
 
         result.import_file_path = import_file_path
