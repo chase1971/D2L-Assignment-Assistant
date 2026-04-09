@@ -119,7 +119,8 @@ def main():
             "success": True,
             "message": "Completion processing completed",
             "combined_pdf_path": result.combined_pdf_path if result and hasattr(result, 'combined_pdf_path') else None,
-            "assignment_name": result.assignment_name if result and hasattr(result, 'assignment_name') else None
+            "assignment_name": result.assignment_name if result and hasattr(result, 'assignment_name') else None,
+            "processing_folder_name": result.processing_folder_name if result and hasattr(result, 'processing_folder_name') else None
         }
         
         print(json.dumps(response))

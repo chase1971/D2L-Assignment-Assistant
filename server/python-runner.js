@@ -10,6 +10,7 @@ const os = require('os');
 const { SCRIPTS_PATH } = require('./config');
 const patchManager = require('../patch-manager');
 const sseLogger = require('../sse-logger');
+const { stripHelperCliOpenFolderJson } = require('./helpers/log-parser');
 
 // Constants
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB buffer for Python script output
@@ -105,6 +106,8 @@ async function runPythonScript(scriptName, args = []) {
   writeLog(`Running: ${scriptName} ${args.join(' ')}`);
   writeLog(`Full path: ${scriptPath}`);
 
+  sseLogger.resetOpenFolderJsonStreamState();
+
   return new Promise((resolve, reject) => {
     // Quote paths and arguments to handle spaces properly
     const quotedPythonPath = `"${pythonPath}"`;
@@ -134,6 +137,10 @@ async function runPythonScript(scriptName, args = []) {
       // Parse [USER] and [DEV] prefixes and route accordingly
       data.toString().split('\n').filter(l => l.trim()).forEach(line => {
         const trimmed = line.trim();
+
+        if (sseLogger.suppressOpenFolderJsonLine(trimmed)) {
+          return;
+        }
 
         // Broadcast to SSE clients in real-time
         sseLogger.parseAndBroadcastLogLine(trimmed);
@@ -214,7 +221,8 @@ async function runPythonScript(scriptName, args = []) {
       // New format: [LOG:LEVEL] message (e.g., [LOG:SUCCESS] ✅ Quiz processing completed!)
       // Legacy format: [USER] message or plain text
       const userLogs = [];
-      const lines = stdout.split('\n').filter(l => l.trim());
+      const stdoutForUserLogs = stripHelperCliOpenFolderJson(stdout);
+      const lines = stdoutForUserLogs.split('\n').filter(l => l.trim());
 
       lines.forEach(line => {
         const trimmed = line.trim();

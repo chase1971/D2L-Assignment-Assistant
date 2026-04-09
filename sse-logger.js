@@ -6,6 +6,65 @@
 // Track all connected SSE clients
 const sseClients = new Set();
 
+// Swallow multiline helper_cli open-folder JSON so it is not streamed line-by-line to the UI
+let openFolderJsonAccumulator = null;
+
+function resetOpenFolderJsonStreamState() {
+  openFolderJsonAccumulator = null;
+}
+
+/**
+ * @returns {boolean} true if this line should be skipped (consumed as helper_cli open-folder JSON)
+ */
+function suppressOpenFolderJsonLine(trimmed) {
+  if (openFolderJsonAccumulator !== null) {
+    openFolderJsonAccumulator += `\n${trimmed}`;
+    const opens = (openFolderJsonAccumulator.match(/\{/g) || []).length;
+    const closes = (openFolderJsonAccumulator.match(/\}/g) || []).length;
+    if (closes < opens) {
+      return true;
+    }
+    try {
+      const obj = JSON.parse(openFolderJsonAccumulator.trim());
+      if (
+        obj &&
+        obj.success === true &&
+        typeof obj.message === 'string' &&
+        obj.message.includes('Opened folder') &&
+        typeof obj.folder === 'string'
+      ) {
+        openFolderJsonAccumulator = null;
+        return true;
+      }
+    } catch (_) {
+      // fall through
+    }
+    openFolderJsonAccumulator = null;
+    return true;
+  }
+  if (trimmed === '{') {
+    openFolderJsonAccumulator = trimmed;
+    return true;
+  }
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const obj = JSON.parse(trimmed);
+      if (
+        obj &&
+        obj.success === true &&
+        typeof obj.message === 'string' &&
+        obj.message.includes('Opened folder') &&
+        typeof obj.folder === 'string'
+      ) {
+        return true;
+      }
+    } catch (_) {
+      // emit
+    }
+  }
+  return false;
+}
+
 /**
  * SSE endpoint handler - establishes streaming connection
  */
@@ -135,5 +194,7 @@ module.exports = {
   parseAndBroadcastLogLine,
   broadcastProcessStart,
   broadcastProcessComplete,
-  getClientCount
+  getClientCount,
+  resetOpenFolderJsonStreamState,
+  suppressOpenFolderJsonLine
 };

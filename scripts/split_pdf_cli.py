@@ -17,7 +17,11 @@ import zipfile
 import shutil
 import re
 from grading_processor import run_reverse_process, find_existing_unzipped_folder
-from grading_helpers import format_error_message
+from grading_helpers import (
+    format_error_message,
+    resolve_workspace_folder_from_assignment_hint,
+    list_class_processing_folders_with_pdfs,
+)
 from config_reader import get_downloads_path, get_rosters_path
 from user_messages import log, log_raw
 
@@ -277,21 +281,19 @@ def rezip_folders(drive, class_name, assignment_name, original_zip_name, process
                 log("CLASS_FOLDER_NOT_FOUND", class_folder=class_folder_path)
                 return False, None
             
-            # Try to find processing folder - handle both new format (with class code) and old format
-            from grading_processor import extract_class_code
-            class_code = extract_class_code(class_name)
-            
-            # Try new format first (with class code)
-            if class_code:
-                processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
-                if not os.path.exists(processing_folder):
-                    # Fallback to old format (without class code)
-                    processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
-            else:
-                # No class code, use old format
-                processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
-            
-            unzipped_folder = find_existing_unzipped_folder(processing_folder)
+            processing_folder = None
+            if assignment_name:
+                processing_folder = resolve_workspace_folder_from_assignment_hint(
+                    class_folder_path, class_name, assignment_name
+                )
+            if not processing_folder:
+                cand = list_class_processing_folders_with_pdfs(class_folder_path)
+                if cand:
+                    cand.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+                    processing_folder = cand[0]
+            unzipped_folder = (
+                find_existing_unzipped_folder(processing_folder) if processing_folder else None
+            )
         
         if not unzipped_folder or not os.path.exists(unzipped_folder):
             log("SPLIT_UNZIPPED_NOT_FOUND")

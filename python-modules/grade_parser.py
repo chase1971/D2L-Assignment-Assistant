@@ -8,6 +8,43 @@ GRADE_SEARCH_LEFT = 0.30
 GRADE_SEARCH_RIGHT = 0.70
 
 
+def is_valid_extracted_grade(value: str) -> bool:
+    """
+    True if the string is safe to write to a Points Grade cell: plain number, fraction, or percent.
+    Rejects OCR garbage, non-Latin text, and values outside 0–100 (for numeric parts).
+    """
+    if not value or not str(value).strip():
+        return False
+    s = str(value).strip()
+    if not s.isascii():
+        return False
+    # Fraction: e.g. 17/20
+    m = re.fullmatch(r"(\d+\.?\d*)\s*/\s*(\d+)", s)
+    if m:
+        try:
+            num, den = float(m.group(1)), float(m.group(2))
+            return den > 0 and 0 <= num <= den * 2
+        except ValueError:
+            return False
+    # Percent
+    m = re.fullmatch(r"(\d+\.?\d*)\s*%", s)
+    if m:
+        try:
+            v = float(m.group(1))
+            return 0 <= v <= 100
+        except ValueError:
+            return False
+    # Plain number / decimal
+    m = re.fullmatch(r"\d+\.?\d*", s)
+    if m:
+        try:
+            v = float(s)
+            return 0 <= v <= 100
+        except ValueError:
+            return False
+    return False
+
+
 def extract_grade_from_text(text):
     """Extract grade from OCR text with smart OCR mistake handling."""
     if not text:

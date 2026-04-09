@@ -25,8 +25,7 @@ import { ClearOption } from '../ClearOptionsModal';
 import { Option2State } from './useOption2State';
 import {
   displayError,
-  formatAssignmentDisplayName,
-  formatAssignmentFolderName
+  formatAssignmentDisplayName
 } from '../utils/assignmentUtils';
 
 export interface Option2Actions {
@@ -169,7 +168,7 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
           rosterPath = pathResult.classFolder;
         } else if (pathResult?.targetPath) {
           const pdfsPath = pathResult.targetPath;
-          const classRosterFolder = pdfsPath.split(/[/\\]PDFs/)[0]?.split(/[/\\]grade processing/)[0]?.trim() || null;
+          const classRosterFolder = pdfsPath.split(/[/\\]PDFs(?:[/\\]|$)/i)[0]?.trim() || null;
           if (classRosterFolder) {
             setClassRosterPath(classRosterFolder);
             rosterPath = classRosterFolder;
@@ -178,7 +177,7 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         
         if (pathResult) {
           addLog(`✅ Class loaded: ${newClass}`);
-          const locationPath = pathResult.classFolder || pathResult.targetPath?.split(/[/\\]PDFs/)[0]?.split(/[/\\]grade processing/)[0]?.trim() || pathResult.targetPath;
+          const locationPath = pathResult.classFolder || pathResult.targetPath?.split(/[/\\]PDFs(?:[/\\]|$)/i)[0]?.trim() || pathResult.targetPath;
           addLog(`📂 Location: ${locationPath}`);
           
           if (rosterPath) {
@@ -222,6 +221,20 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
       const result = await processQuizzes(drive, selectedClass, addLog);
       
       if (result.success) {
+        const rawName = result.combined_pdf_path
+          ? result.combined_pdf_path.split(/[/\\]/).pop()?.replace(/\.pdf$/i, '') || result.assignment_name || ''
+          : result.assignment_name || '';
+        const displayName = formatAssignmentDisplayName(rawName, selectedClass);
+        const folderName =
+          typeof result.processing_folder_name === 'string' && result.processing_folder_name.trim()
+            ? result.processing_folder_name.trim()
+            : undefined;
+        setLastProcessedAssignment({
+          name: displayName,
+          className: selectedClass,
+          zipPath: '',
+          ...(folderName ? { folderName } : {})
+        });
         // Success message already logged
         // Store students without submission if available
         if (result.students_without_submission && result.students_without_submission.length > 0) {
@@ -260,15 +273,20 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
       
       if (result.success) {
         let rawName = result.combined_pdf_path 
-          ? result.combined_pdf_path.split('\\').pop()?.replace('.pdf', '') || result.assignment_name
+          ? result.combined_pdf_path.split(/[/\\]/).pop()?.replace(/\.pdf$/i, '') || result.assignment_name
           : result.assignment_name || zipFilename.replace(/\s*Download.*\.zip$/i, '').trim();
         
         const displayName = formatAssignmentDisplayName(rawName, selectedClass);
         
+        const folderName =
+          typeof result.processing_folder_name === 'string' && result.processing_folder_name.trim()
+            ? result.processing_folder_name.trim()
+            : undefined;
         setLastProcessedAssignment({
           name: displayName,
           className: selectedClass,
-          zipPath: zipPath
+          zipPath: zipPath,
+          ...(folderName ? { folderName } : {})
         });
         
         // Store students without submission if available
@@ -323,10 +341,15 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         
         if (result.assignment_name) {
           const rawAssignmentName = result.assignment_name.trim();
+          const folderName =
+            typeof result.processing_folder_name === 'string' && result.processing_folder_name.trim()
+              ? result.processing_folder_name.trim()
+              : undefined;
           setLastProcessedAssignment({
             name: rawAssignmentName,
             className: selectedClass,
-            zipPath: zipPath
+            zipPath: zipPath,
+            ...(folderName ? { folderName } : {})
           });
         }
       } else {
@@ -355,10 +378,15 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         
         if (result.assignment_name) {
           const rawAssignmentName = result.assignment_name.trim();
+          const folderName =
+            typeof result.processing_folder_name === 'string' && result.processing_folder_name.trim()
+              ? result.processing_folder_name.trim()
+              : undefined;
           setLastProcessedAssignment({
             name: rawAssignmentName,
             className: selectedClass,
-            zipPath: ''
+            zipPath: '',
+            ...(folderName ? { folderName } : {})
           });
         }
       } else if (result.zip_files && result.zip_files.length > 0) {
@@ -592,7 +620,7 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         const filename = pdfPath.split(/[/\\]/).pop() || '';
         finalAssignmentName = filename.replace(/\.pdf$/i, '').trim();
       } else if (!finalAssignmentName && lastProcessedAssignment && lastProcessedAssignment.className === selectedClass) {
-        finalAssignmentName = lastProcessedAssignment.name;
+        finalAssignmentName = lastProcessedAssignment.folderName ?? lastProcessedAssignment.name;
       }
       
       const result = await splitPdf(drive, selectedClass, finalAssignmentName, pdfPath, addLog);
@@ -622,8 +650,11 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
           addLog('✅ Grade processing folder opened');
         }
       } else {
-        if (result.error?.includes('No grade processing folder found')) {
-          addLog('❌ No grade processing folder found');
+        if (
+          result.error?.includes('No grade processing folder found') ||
+          result.error?.includes('Processing folder not found')
+        ) {
+          addLog('❌ No assignment workspace folder found');
         } else {
           addLog(`❌ ${result.error}`);
         }
@@ -655,8 +686,8 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     if (!requireClass()) return;
 
     if (lastProcessedAssignment && lastProcessedAssignment.className === selectedClass) {
-      const assignmentName = lastProcessedAssignment.name;
-      const folderDisplayName = formatAssignmentFolderName(assignmentName, selectedClass);
+      const clearHint = lastProcessedAssignment.folderName ?? lastProcessedAssignment.name;
+      const folderDisplayName = lastProcessedAssignment.name;
       
       setClearOptionsConfig({
         title: 'Clear Current Assignment',
@@ -684,7 +715,7 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
             const result = await clearAllData(
               drive, 
               selectedClass, 
-              assignmentName, 
+              clearHint, 
               saveFoldersAndPdf, 
               saveCombinedPdf,
               deleteEverything,
@@ -738,8 +769,8 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
     
     const assignmentsList: string[] = Array.from(selectedAssignments);
     
-    const unarchivedCount = processingFolders.filter(f => 
-      f.name.toLowerCase().startsWith('grade processing ')
+    const unarchivedCount = processingFolders.filter(
+      f => !f.name.toLowerCase().startsWith('archived ')
     ).length;
     const allCount = processingFolders.length;
     
@@ -822,7 +853,12 @@ export function useOption2Actions(state: Option2State, drive: string = 'C'): Opt
         }
       }
       
-      if (lastProcessedAssignment && selectedAssignments.has(lastProcessedAssignment.name)) {
+      if (
+        lastProcessedAssignment &&
+        (selectedAssignments.has(lastProcessedAssignment.name) ||
+          (lastProcessedAssignment.folderName &&
+            selectedAssignments.has(lastProcessedAssignment.folderName)))
+      ) {
         setLastProcessedAssignment(null);
       }
     } catch (error) {

@@ -28,6 +28,7 @@ export interface ApiResult {
   killed?: number;  // For killProcesses response
   assignmentName?: string;  // For split PDF upload response
   assignment_name?: string;  // From Python backend
+  processing_folder_name?: string;  // On-disk workspace basename from Python
   combined_pdf_path?: string;  // From Python backend
   confidenceScores?: ConfidenceScore[];  // For grade extraction
   students?: Array<{name: string; hasAssignment: boolean; email?: string; isUnreadable?: boolean}>;  // For email functionality

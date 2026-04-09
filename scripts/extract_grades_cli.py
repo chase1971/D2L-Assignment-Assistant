@@ -26,7 +26,11 @@ from name_matching import names_match_fuzzy
 from import_file_handler import validate_import_file_early, validate_required_columns, _find_import_file
 from grading_constants import REQUIRED_COLUMNS_COUNT, END_OF_LINE_COLUMN_INDEX, CONFIDENCE_HIGH, CONFIDENCE_MEDIUM
 from file_utils import open_file_with_default_app
-from grading_helpers import format_error_message
+from grading_helpers import (
+    format_error_message,
+    list_class_processing_folders_with_pdfs,
+)
+from grade_parser import is_valid_extracted_grade
 from user_messages import log, log_raw
 
 
@@ -116,18 +120,13 @@ def _match_grades_to_roster(
         # Extract grade and confidence
         if isinstance(grade_info, dict):
             grade = grade_info.get('grade', '').strip()
-            grade_raw = grade_info.get('grade_raw', '').strip()
             confidence = grade_info.get('confidence', 0)
-            
-            # If processed grade is "No grade found", use raw OCR text instead
-            if grade == "No grade found" and grade_raw:
-                grade = grade_raw
         else:
             grade = str(grade_info).strip()
             confidence = 0
 
-        # If no grade found, leave empty
-        if not grade or grade == "No grade found":
+        # Only write numeric-style grades; never raw OCR (avoids mojibake / non-numeric text in import)
+        if not grade or grade == "No grade found" or not is_valid_extracted_grade(grade):
             grade = ""
 
         # Try exact matching first
@@ -185,19 +184,20 @@ def _match_grades_to_roster(
                 fuzzy_matches.append(f"{student_name} → matched to {best_match} (fuzzy match - needs verification)")
 
         if matched and matched_idx is not None:
-            # Write the OCR's grade text
             df.at[matched_idx, quiz_column] = grade
 
-            # Mark "Verify" for low confidence OR fuzzy matches
+            # Verify: fuzzy name match, low OCR confidence, or missing/invalid (non-numeric) grade
             row_needs_verify = False
-            if confidence < CONFIDENCE_HIGH:
+            if not grade:
+                row_needs_verify = True
+                matching_errors.append(f"{student_name}: (no numeric grade – needs verification)")
+            elif confidence < CONFIDENCE_HIGH:
                 row_needs_verify = True
                 grade_display = grade if grade else "(no grade found)"
-                # Note: This will be collected as low_confidence_students in main()
                 matching_errors.append(f"{student_name}: {grade_display} (low confidence – needs verification)")
             elif is_fuzzy_match:
                 row_needs_verify = True
-            
+
             if row_needs_verify:
                 verify_rows.append(matched_idx)
             
@@ -301,17 +301,16 @@ def _format_extraction_results(
             if isinstance(grade_info, dict):
                 conf = grade_info.get('confidence', 1.0)
                 grade = grade_info.get('grade', '')
-                grade_str = str(grade) if grade else ''
-                
-                # Check if no grade found
-                if not grade or grade == "No grade found" or grade_str.strip() == "":
+                grade_str = str(grade).strip() if grade and grade != "No grade found" else ''
+                has_valid = is_valid_extracted_grade(grade_str) if grade_str else False
+
+                if not has_valid:
                     if name not in seen_students:
                         no_grade_found.append(name)
                         seen_students.add(name)
-                # Check if low confidence (but has a grade)
                 elif conf < CONFIDENCE_HIGH:
                     if name not in seen_students:
-                        low_confidence.append(f"{name}: {grade}")
+                        low_confidence.append(f"{name}: {grade_str}")
                         seen_students.add(name)
     
     # Process low_confidence_students list (from matching phase) - these are pre-formatted messages
@@ -328,6 +327,9 @@ def _format_extraction_results(
             
             # Check if it's a "no grade found" message
             if "(no grade found)" in clean_msg.lower():
+                no_grade_found.append(student_name)
+                seen_students.add(student_name)
+            elif "no numeric grade" in clean_msg.lower():
                 no_grade_found.append(student_name)
                 seen_students.add(student_name)
             # Otherwise it's a low confidence message
@@ -375,7 +377,8 @@ def _format_extraction_results(
         clean_error = error.replace("⚠️ ", "").replace("❌ ", "").strip()
         student_name = extract_student_name(clean_error)
         if student_name not in seen_students and student_name not in [extract_student_name(nm) for nm in name_matching]:
-            if "(no grade found)" in clean_error.lower() or "no grade" in clean_error.lower():
+            el = clean_error.lower()
+            if "no numeric grade" in el or "(no grade found)" in el or "no grade" in el:
                 no_grade_found.append(student_name)
                 seen_students.add(student_name)
     
@@ -517,37 +520,28 @@ def main() -> None:
                 # PDF might be directly in grade processing folder
                 grade_processing_folder = pdf_dir
             
-            # Extract assignment name from the grade processing folder name
-            # Just extract everything after "grade processing " and before/without the class code
+            # Import columns use the full D2L assignment name — derive from legacy folder or PDF filename, not short folder labels (e.g. Quiz 4).
             folder_name = os.path.basename(grade_processing_folder)
             import re
-            
-            # Remove "grade processing " prefix
+
             if folder_name.lower().startswith('grade processing '):
                 assignment_with_code = folder_name[len('grade processing '):]
-                # Remove class code at the beginning if present (e.g., "H 8-920 " or "TTH 11-1220 ")
-                assignment_name_from_pdf = re.sub(r'^[A-Z]+\s+\d+-\d+\s+', '', assignment_with_code, flags=re.IGNORECASE).strip()
+                assignment_name_from_pdf = re.sub(
+                    r'^[A-Z]+\s+\d+-\d+\s+', '', assignment_with_code, flags=re.IGNORECASE
+                ).strip()
             else:
-                # Fallback: extract from PDF filename
                 pdf_basename = os.path.basename(combined_pdf_path)
-                assignment_name_from_pdf = pdf_basename.replace(' combined PDF.pdf', '').replace('combined PDF.pdf', '')
-                # Remove class code at the end
-                assignment_name_from_pdf = re.sub(r'\s+[A-Z]+\s+\d+-\d+\s*$', '', assignment_name_from_pdf, flags=re.IGNORECASE).strip()
+                assignment_name_from_pdf = pdf_basename.replace(' combined PDF.pdf', '').replace(
+                    'combined PDF.pdf', ''
+                )
+                assignment_name_from_pdf = re.sub(
+                    r'\s+[A-Z]+\s+\d+-\d+\s*$', '', assignment_name_from_pdf, flags=re.IGNORECASE
+                ).strip()
         else:
-            # Find the most recent "grade processing [Assignment]" folder
-            import re
-            pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
-            processing_folders = []
-            
-            for folder_name in os.listdir(class_folder):
-                folder_path = os.path.join(class_folder, folder_name)
-                if os.path.isdir(folder_path):
-                    match = pattern.match(folder_name)
-                    if match:
-                        processing_folders.append(folder_path)
-            
+            processing_folders = list_class_processing_folders_with_pdfs(class_folder)
+
             if not processing_folders:
-                raise Exception("No grade processing folders found for this class")
+                raise Exception("No assignment processing folders found for this class")
             
             # Sort by modification time (newest first) and use the most recent
             processing_folders.sort(key=lambda f: os.path.getmtime(f), reverse=True)
@@ -565,8 +559,9 @@ def main() -> None:
                     # Sort by modification time (newest first)
                     pdf_files.sort(key=lambda f: os.path.getmtime(os.path.join(pdfs_folder, f)), reverse=True)
                     combined_pdf_path = os.path.join(pdfs_folder, pdf_files[0])
-                    # Extract assignment name from PDF filename
-                    assignment_name_from_pdf = pdf_files[0].replace('.pdf', '').replace(' combined PDF', '').strip()
+                    assignment_name_from_pdf = (
+                        pdf_files[0].replace('.pdf', '').replace(' combined PDF', '').strip()
+                    )
             
             if not combined_pdf_path or not os.path.exists(combined_pdf_path):
                 log("GRADES_PDF_NOT_FOUND")
@@ -672,7 +667,10 @@ def main() -> None:
         )
         
         # Collect low confidence students from matching errors
-        low_confidence_students = [err for err in matching_errors if "low confidence" in err]
+        low_confidence_students = [
+            err for err in matching_errors
+            if "low confidence" in err or "no numeric grade" in err
+        ]
         
         # Add fuzzy matches and matching errors to extraction_errors
         if fuzzy_matches:
@@ -729,9 +727,13 @@ def main() -> None:
         if grades_result:
             for name, grade_info in grades_result.items():
                 if isinstance(grade_info, dict):
+                    g = str(grade_info.get('grade', '')).strip()
+                    if g == 'No grade found':
+                        g = ''
+                    safe_grade = g if is_valid_extracted_grade(g) else ''
                     confidence_scores.append({
                         "name": name,
-                        "grade": grade_info.get('grade', 'No grade found'),
+                        "grade": safe_grade,
                         "confidence": grade_info.get('confidence', 0.0)
                     })
         

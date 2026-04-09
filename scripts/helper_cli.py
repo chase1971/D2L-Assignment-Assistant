@@ -136,10 +136,6 @@ def open_folder(drive_letter, class_name, open_class_folder_only=False):
         class_name: Class name
         open_class_folder_only: If True, open class roster folder only. If False, open most recent processing folder.
     """
-    import subprocess
-    import platform
-    import re
-    
     try:
         # Get configured rosters path
         rosters_path = get_rosters_path()
@@ -162,17 +158,10 @@ def open_folder(drive_letter, class_name, open_class_folder_only=False):
                 "folder": class_folder
             }
         
-        # Otherwise, look for most recent "grade processing [Assignment]" folder
-        pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
-        processing_folders = []
-        
-        for folder_name in os.listdir(class_folder):
-            folder_path = os.path.join(class_folder, folder_name)
-            if os.path.isdir(folder_path):
-                match = pattern.match(folder_name)
-                if match:
-                    processing_folders.append(folder_path)
-        
+        from grading_helpers import list_class_processing_folders_with_pdfs
+
+        processing_folders = list_class_processing_folders_with_pdfs(class_folder)
+
         # Determine which folder to open
         if processing_folders:
             # Sort by modification time (newest first) and open the most recent
