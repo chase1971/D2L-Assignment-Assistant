@@ -34,9 +34,12 @@ from grade_parser import is_valid_extracted_grade
 from user_messages import log, log_raw
 
 
-def _validate_import_file_structure(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, str]:
+def _validate_import_file_structure(
+    df: pd.DataFrame,
+    assignment_name: str = None
+) -> Tuple[pd.DataFrame, int, str]:
     """
-    Validate import file structure, ensure End-of-Line Indicator exists, and find quiz column.
+    Validate import file structure, ensure End-of-Line Indicator exists, and prepare quiz column.
     
     Args:
         df: DataFrame to validate
@@ -81,13 +84,32 @@ def _validate_import_file_structure(df: pd.DataFrame) -> Tuple[pd.DataFrame, int
         columns_to_keep = list(df.columns[:eol_index + 1])
         df = df[columns_to_keep].copy()
     
-    # Find quiz/grade column (the one just before End-of-Line Indicator)
-    grade_columns = [col for col in df.columns if 'Points Grade' in col or 'Quiz' in col]
-    if grade_columns:
-        quiz_column = grade_columns[-1]  # Use the last/most recent grade column
+    # If assignment name is known, force override mode:
+    # keep fixed roster columns + End-of-Line indicator, then insert fresh assignment column.
+    if assignment_name:
+        col_name = assignment_name.strip()
+        if col_name and not col_name.lower().endswith("points grade"):
+            col_name = f"{col_name} Points Grade"
+        elif not col_name:
+            col_name = "Points Grade"
+
+        eol_col_name = df.columns[eol_index]
+        fixed_columns = list(df.columns[:REQUIRED_COLUMNS_COUNT])
+        df = df[fixed_columns + [eol_col_name]].copy()
+        df.insert(REQUIRED_COLUMNS_COUNT, col_name, "")
+        quiz_column = col_name
+        eol_index = REQUIRED_COLUMNS_COUNT + 1
     else:
-        # Use column before End-of-Line Indicator
-        quiz_column = df.columns[eol_index - 1] if eol_index > 0 else df.columns[-1]
+        # Fallback behavior when assignment name is unavailable.
+        grade_columns = [col for col in df.columns if 'Points Grade' in col or 'Quiz' in col]
+        if grade_columns:
+            quiz_column = grade_columns[-1]  # Use the last/most recent grade column
+        else:
+            # Use column before End-of-Line Indicator
+            quiz_column = df.columns[eol_index - 1] if eol_index > 0 else df.columns[-1]
+
+    # Ensure grade column accepts string values (avoids pandas dtype warnings).
+    df[quiz_column] = df[quiz_column].astype("object")
     
     return df, eol_index, quiz_column
 
@@ -577,7 +599,7 @@ def main() -> None:
         df = pd.read_csv(import_file_path)
         
         # Validate and prepare import file structure
-        df, eol_index, quiz_column = _validate_import_file_structure(df)
+        df, eol_index, quiz_column = _validate_import_file_structure(df, assignment_name_from_pdf)
         
         # Build roster names list for fuzzy matching during extraction
         roster_names = []
@@ -697,21 +719,6 @@ def main() -> None:
             if first_pages_pdf and os.path.exists(first_pages_pdf):
                 log("GRADES_OPENING_GRADES_PDF")
                 open_file_with_default_app(first_pages_pdf)
-                
-                # Try to arrange windows side-by-side (Windows only)
-                try:
-                    from file_utils import arrange_windows_side_by_side
-                    # Wait briefly and arrange - look for CSV/Excel and PDF windows
-                    csv_filename = os.path.basename(import_file_path)
-                    pdf_filename = os.path.basename(first_pages_pdf)
-                    log("GRADES_ARRANGING_WINDOWS")
-                    if arrange_windows_side_by_side([csv_filename, pdf_filename], delay=1.5):
-                        log("GRADES_WINDOWS_ARRANGED")
-                    else:
-                        log("GRADES_WINDOWS_ARRANGE_FAILED")
-                except Exception as e:
-                    log("GRADES_WINDOW_ARRANGEMENT_UNAVAILABLE", error=str(e))
-                    pass  # Silent fail - not critical
         except Exception as e:
             log("DEV_ERROR_OPEN_EXTRACTED_FILES", error=str(e))
             extraction_errors.append(f"⚠️ Could not open files: {str(e)}")
