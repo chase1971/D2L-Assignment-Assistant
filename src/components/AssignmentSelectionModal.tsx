@@ -44,8 +44,8 @@ export default function AssignmentSelectionModal({
     if (includeArchived) {
       return folders; // Show all folders
     }
-    // Only show unarchived (grade processing) folders
-    return folders.filter(folder => folder.name.toLowerCase().startsWith('grade processing '));
+    // Active workspaces and legacy names; exclude archived copies
+    return folders.filter(folder => !folder.name.toLowerCase().startsWith('archived '));
   }, [folders, includeArchived]);
 
   const allSelected = visibleFolders.length > 0 && visibleFolders.every(folder => selectedAssignments.has(folder.name));

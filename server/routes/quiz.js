@@ -15,6 +15,7 @@ const { loadConfig } = require('../config');
 const { runPythonScript, writeLog } = require('../python-runner');
 const { validateClassName } = require('../helpers/validation');
 const { getPossibleRostersPaths, findClassFolder, findPdfsFolder, findMostRecentProcessingFolder } = require('../helpers/file-paths');
+const { stripHelperCliOpenFolderJson } = require('../helpers/log-parser');
 const { getUserLogs, parseZipFilesFromOutput } = require('../helpers/log-parser');
 const { apiResponse } = require('../helpers/api-response');
 const sseLogger = require('../../sse-logger');
@@ -79,6 +80,7 @@ router.post('/process', async (req, res) => {
       logs: getUserLogs(result),
       combined_pdf_path: result.combined_pdf_path,
       assignment_name: result.assignment_name,
+      processing_folder_name: result.processing_folder_name,
       students_without_submission: result.no_submission,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
@@ -108,6 +110,7 @@ router.post('/process-selected', async (req, res) => {
       logs: getUserLogs(result),
       combined_pdf_path: result.combined_pdf_path,
       assignment_name: result.assignment_name,
+      processing_folder_name: result.processing_folder_name,
       students_without_submission: result.no_submission,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
@@ -151,6 +154,7 @@ router.post('/process-completion', async (req, res) => {
       logs: getUserLogs(result),
       combined_pdf_path: result.data?.combined_pdf_path,
       assignment_name: result.data?.assignment_name,
+      processing_folder_name: result.processing_folder_name ?? result.data?.processing_folder_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
@@ -182,6 +186,7 @@ router.post('/process-completion-selected', async (req, res) => {
       logs: getUserLogs(result),
       combined_pdf_path: result.data?.combined_pdf_path,
       assignment_name: result.data?.assignment_name,
+      processing_folder_name: result.processing_folder_name ?? result.data?.processing_folder_name,
       ...(result.success ? {} : { error: result.error || 'Processing failed' })
     });
   } catch (error) {
@@ -221,7 +226,8 @@ router.post('/extract-grades', async (req, res) => {
       logs = result.userLogs.map(log => log.message || log);
     } else {
       // Fallback: parse output manually
-      logs = result.output.split('\n')
+      const cleanedOutput = stripHelperCliOpenFolderJson(result.output || '');
+      logs = cleanedOutput.split('\n')
         .filter(l => {
           const trimmed = l.trim();
           return trimmed &&

@@ -18,7 +18,8 @@ function getUserLogs(result) {
   }
 
   // Legacy: parse output
-  return result.output.split('\n')
+  const cleaned = stripHelperCliOpenFolderJson(result.output);
+  return cleaned.split('\n')
     .filter(l => l.trim() && !l.trim().startsWith('[DEV]') && !l.trim().startsWith('{'))
     .map(l => {
       const trimmed = l.trim();
@@ -78,4 +79,55 @@ function parseZipFilesFromOutput(output, downloadsPath) {
   return { found: false };
 }
 
-module.exports = { getUserLogs, parseZipFilesFromOutput };
+/**
+ * Remove pretty-printed helper_cli open-folder JSON (multiline) from captured stdout.
+ * Otherwise each line ("success", "message", …) becomes a fake log line during extract-grades etc.
+ */
+function stripHelperCliOpenFolderJson(text) {
+  if (!text || typeof text !== 'string') return text;
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const open = text.indexOf('{', i);
+    if (open === -1) {
+      out += text.slice(i);
+      break;
+    }
+    out += text.slice(i, open);
+    let depth = 0;
+    let j = open;
+    for (; j < text.length; j++) {
+      const c = text[j];
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) {
+          j++;
+          break;
+        }
+      }
+    }
+    const block = text.slice(open, j);
+    try {
+      const obj = JSON.parse(block);
+      if (
+        obj &&
+        typeof obj === 'object' &&
+        obj.success === true &&
+        typeof obj.message === 'string' &&
+        obj.message.includes('Opened folder') &&
+        typeof obj.folder === 'string'
+      ) {
+        i = j;
+        continue;
+      }
+    } catch (_) {
+      // keep block
+    }
+    out += block;
+    i = j;
+  }
+  return out;
+}
+
+module.exports = { getUserLogs, parseZipFilesFromOutput, stripHelperCliOpenFolderJson };

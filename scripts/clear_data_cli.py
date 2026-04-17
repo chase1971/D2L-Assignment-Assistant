@@ -21,6 +21,10 @@ import subprocess
 from glob import glob
 from config_reader import get_rosters_path
 from user_messages import log
+from grading_helpers import (
+    list_class_processing_folders_with_pdfs,
+    resolve_workspace_folder_from_assignment_hint,
+)
 
 # Container folder for all archived assignment folders (inside class folder)
 ARCHIVED_FOLDERS_NAME = "Archived Folders"
@@ -126,10 +130,22 @@ def format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
+def _processing_basename_for_archived_link(folder_name: str) -> str:
+    """Stem used with archived folders (legacy grade processing or short names)."""
+    m = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return folder_name.strip()
+
+
+def archived_name_for_processing_folder(folder_name: str) -> str:
+    return f"archived {_processing_basename_for_archived_link(folder_name)}"
+
+
 def list_processing_folders(class_folder_path: str) -> list[dict[str, str]]:
     """
-    List all 'grade processing [Assignment]' and 'archived [Assignment]' folders in the class folder.
-    Archived folders are listed from both the class folder root and from class_folder/Archived Folders/.
+    List active assignment workspaces (folders with PDFs) and archived folders.
+    Includes legacy 'grade processing …' names and short names like 'Quiz 4'.
     
     Returns:
         List of dicts with keys: name, path, size, modified
@@ -146,7 +162,9 @@ def list_processing_folders(class_folder_path: str) -> list[dict[str, str]]:
             return
         processing_match = processing_pattern.match(folder_name)
         archived_match = archived_pattern.match(folder_name)
-        if processing_match or archived_match:
+        has_pdfs = os.path.isdir(os.path.join(folder_path, 'PDFs'))
+        is_active = processing_match or (has_pdfs and not archived_match)
+        if is_active or archived_match:
             size = get_folder_size(folder_path)
             modified = os.path.getmtime(folder_path)
             folders.append({
@@ -269,27 +287,21 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
                 safe_remove_tree(unzipped_folder)
         
         # Move folder to 'Archived Folders/archived [Assignment]'
-        match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
-        if match:
-            assignment_name = match.group(1)
-            new_folder_name = f"archived {assignment_name}"
-            archived_root = os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME)
-            os.makedirs(archived_root, exist_ok=True)
-            new_folder_path = os.path.join(archived_root, new_folder_name)
-            
-            # If archived folder already exists, remove it first
-            if os.path.exists(new_folder_path):
-                safe_remove_tree(new_folder_path)
-            
-            try:
-                os.rename(folder_path, new_folder_path)
-                log("CLEAR_ARCHIVED_TO", folder_name=new_folder_name)
-                return True
-            except Exception as e:
-                log("ERR_CLEAR_FAILED_RENAME", error=str(e))
-                return False
-        
-        return True
+        new_folder_name = archived_name_for_processing_folder(folder_name)
+        archived_root = os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME)
+        os.makedirs(archived_root, exist_ok=True)
+        new_folder_path = os.path.join(archived_root, new_folder_name)
+
+        if os.path.exists(new_folder_path):
+            safe_remove_tree(new_folder_path)
+
+        try:
+            os.rename(folder_path, new_folder_path)
+            log("CLEAR_ARCHIVED_TO", folder_name=new_folder_name)
+            return True
+        except Exception as e:
+            log("ERR_CLEAR_FAILED_RENAME", error=str(e))
+            return False
         
     elif save_mode == 'save_folders_and_pdf':
         # Save folders and PDF: Keep unzipped folders, extract combined PDF to root, delete PDFs folder
@@ -321,28 +333,21 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
             safe_remove_tree(unreadable_folder)
         
         # Move folder to 'Archived Folders/archived [Assignment]'
-        match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
-        if match:
-            assignment_name = match.group(1)
-            new_folder_name = f"archived {assignment_name}"
-            archived_root = os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME)
-            os.makedirs(archived_root, exist_ok=True)
-            new_folder_path = os.path.join(archived_root, new_folder_name)
-            
-            # If archived folder already exists, remove it first
-            if os.path.exists(new_folder_path):
-                safe_remove_tree(new_folder_path)
-            
-            try:
-                os.rename(folder_path, new_folder_path)
-                log("CLEAR_ARCHIVED_TO", folder_name=new_folder_name)
-                return True
-            except Exception as e:
-                log("ERR_CLEAR_FAILED_RENAME", error=str(e))
-                return False
-        
-        log("CLEAR_SELECTIVE_COMPLETE")
-        return True
+        new_folder_name = archived_name_for_processing_folder(folder_name)
+        archived_root = os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME)
+        os.makedirs(archived_root, exist_ok=True)
+        new_folder_path = os.path.join(archived_root, new_folder_name)
+
+        if os.path.exists(new_folder_path):
+            safe_remove_tree(new_folder_path)
+
+        try:
+            os.rename(folder_path, new_folder_path)
+            log("CLEAR_ARCHIVED_TO", folder_name=new_folder_name)
+            return True
+        except Exception as e:
+            log("ERR_CLEAR_FAILED_RENAME", error=str(e))
+            return False
     elif save_mode == 'delete_all':
         # Delete only processing folder (keep archived)
         if safe_remove_tree(folder_path):
@@ -357,10 +362,8 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
             log("CLEAR_DELETED", folder_name=folder_name)
             
             # Also delete corresponding archived folder (check root and Archived Folders)
-            match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
-            if match:
-                assignment_name = match.group(1)
-                archived_folder_name = f"archived {assignment_name}"
+            if not re.match(r'^archived ', folder_name, re.IGNORECASE):
+                archived_folder_name = archived_name_for_processing_folder(folder_name)
                 for archived_path in (
                     os.path.join(parent_folder, archived_folder_name),
                     os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME, archived_folder_name),
@@ -381,10 +384,8 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
             log("CLEAR_DELETED", folder_name=folder_name)
             
             # If this was a processing folder, delete corresponding archived (root or Archived Folders)
-            match = re.match(r'^grade processing (.+)$', folder_name, re.IGNORECASE)
-            if match:
-                assignment_name = match.group(1)
-                archived_folder_name = f"archived {assignment_name}"
+            if not re.match(r'^archived ', folder_name, re.IGNORECASE):
+                archived_folder_name = archived_name_for_processing_folder(folder_name)
                 for archived_path in (
                     os.path.join(parent_folder, archived_folder_name),
                     os.path.join(parent_folder, ARCHIVED_FOLDERS_NAME, archived_folder_name),
@@ -397,13 +398,16 @@ def clear_assignment_data(folder_path: str, save_mode: str = 'delete_all') -> bo
             # If this was an archived folder, delete corresponding processing (always in class root)
             match = re.match(r'^archived (.+)$', folder_name, re.IGNORECASE)
             if match:
-                assignment_name = match.group(1)
-                processing_folder_name = f"grade processing {assignment_name}"
+                assignment_key = match.group(1).strip()
                 class_root = os.path.dirname(parent_folder) if os.path.basename(parent_folder) == ARCHIVED_FOLDERS_NAME else parent_folder
-                processing_folder_path = os.path.join(class_root, processing_folder_name)
-                if os.path.exists(processing_folder_path):
-                    if safe_remove_tree(processing_folder_path):
-                        log("CLEAR_DELETED", folder_name=processing_folder_name)
+                for processing_folder_path in (
+                    os.path.join(class_root, assignment_key),
+                    os.path.join(class_root, f"grade processing {assignment_key}"),
+                ):
+                    if os.path.exists(processing_folder_path):
+                        if safe_remove_tree(processing_folder_path):
+                            log("CLEAR_DELETED", folder_name=os.path.basename(processing_folder_path))
+                        break
             
             return True
         else:
@@ -553,61 +557,16 @@ def main():
         
         # Find the target processing folder
         if assignment_name:
-            # Check if assignment_name already includes the prefix
-            if assignment_name.lower().startswith("grade processing ") or assignment_name.lower().startswith("archived "):
-                # Use the folder name directly
-                processing_folder = os.path.join(class_folder, assignment_name)
-            else:
-                # Clean the assignment name - remove "combined PDF", class code, and other suffixes
-                cleaned_assignment = assignment_name
-                
-                # Remove "combined PDF" suffix (case insensitive)
-                cleaned_assignment = re.sub(r'\s+combined\s+pdf\s*$', '', cleaned_assignment, flags=re.IGNORECASE)
-                
-                # Extract class code from class name
-                class_code = extract_class_code(class_name)
-                
-                # Remove class code from assignment name if it's in there (e.g., "Quiz 4 FM 4202" -> "Quiz 4")
-                if class_code:
-                    # Remove class code pattern from assignment name
-                    class_code_pattern = re.escape(class_code)
-                    cleaned_assignment = re.sub(r'\s*' + class_code_pattern + r'\s*', ' ', cleaned_assignment, flags=re.IGNORECASE)
-                    cleaned_assignment = cleaned_assignment.strip()
-                
-                # Clean up any extra spaces
-                cleaned_assignment = re.sub(r'\s+', ' ', cleaned_assignment).strip()
-                
-                # Construct folder name with class code
-                if class_code:
-                    processing_folder = os.path.join(class_folder, f"grade processing {class_code} {cleaned_assignment}")
-                else:
-                    # Fallback if class code can't be extracted
-                    processing_folder = os.path.join(class_folder, f"grade processing {cleaned_assignment}")
-            
-            if not os.path.exists(processing_folder):
-                # Try to find the folder by searching for folders that contain the assignment name
-                # This helps if the assignment name format is slightly different
-                pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
-                matching_folders = []
-                for folder_name in os.listdir(class_folder):
-                    folder_path = os.path.join(class_folder, folder_name)
-                    if os.path.isdir(folder_path):
-                        match = pattern.match(folder_name)
-                        if match:
-                            folder_assignment = match.group(1)
-                            # Check if the cleaned assignment name is in the folder name
-                            if cleaned_assignment.lower() in folder_assignment.lower() or folder_assignment.lower() in cleaned_assignment.lower():
-                                matching_folders.append(folder_path)
-                
-                if matching_folders:
-                    # Use the first matching folder
-                    processing_folder = matching_folders[0]
-                    log("CLEAR_FOUND_MATCHING", folder_name=os.path.basename(processing_folder))
-                else:
-                    log("ERR_CLEAR_FOLDER_NOT_FOUND", 
-                        assignment=assignment_name, 
-                        path=os.path.basename(processing_folder))
-                    sys.exit(1)
+            processing_folder = resolve_workspace_folder_from_assignment_hint(
+                class_folder, class_name, assignment_name
+            )
+            if not processing_folder:
+                log(
+                    "ERR_CLEAR_FOLDER_NOT_FOUND",
+                    assignment=assignment_name,
+                    path=assignment_name,
+                )
+                sys.exit(1)
         else:
             log("ERR_NO_ASSIGNMENTS")
             sys.exit(1)

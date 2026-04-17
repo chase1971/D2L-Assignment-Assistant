@@ -269,7 +269,12 @@ export default function Option2() {
                 <MetalButton
                   onClick={() => {
                     const pdfPath = state.lastProcessedAssignment?.zipPath || null;
-                    actions.handleSplitPdf(state.lastProcessedAssignment?.name || null, pdfPath);
+                    actions.handleSplitPdf(
+                      (state.lastProcessedAssignment?.folderName ??
+                        state.lastProcessedAssignment?.name) ||
+                        null,
+                      pdfPath
+                    );
                   }}
                   disabled={!state.selectedClass || state.splitting || !state.lastProcessedAssignment || state.lastProcessedAssignment.className !== state.selectedClass}
                   isDark={state.isDark}
@@ -297,7 +302,7 @@ export default function Option2() {
                     } : {})
                   }}
                   title={state.lastProcessedAssignment && state.lastProcessedAssignment.className === state.selectedClass 
-                    ? `Open grade processing folder for ${state.lastProcessedAssignment.name}`
+                    ? `Open assignment folder for ${state.lastProcessedAssignment.name}`
                     : state.selectedClass 
                     ? `Open class roster folder for ${state.selectedClass}`
                     : 'Select a class first'}

@@ -51,7 +51,16 @@ function findClassFolder(drive, className) {
   return null;
 }
 
-// Find the most recent "grade processing" folder within a class folder
+function folderHasPdfsSubdir(folderPath) {
+  try {
+    const pdfsPath = path.join(folderPath, 'PDFs');
+    return fs.existsSync(pdfsPath) && fs.statSync(pdfsPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// Most recent assignment workspace: legacy "grade processing …" or any folder with a PDFs subfolder (e.g. Quiz 4)
 function findMostRecentProcessingFolder(classFolder) {
   try {
     if (!fs.existsSync(classFolder)) return null;
@@ -62,8 +71,11 @@ function findMostRecentProcessingFolder(classFolder) {
     for (const folderName of folders) {
       const folderPath = path.join(classFolder, folderName);
       if (fs.statSync(folderPath).isDirectory()) {
-        // Match "grade processing" followed by anything
-        if (/^grade processing .+$/i.test(folderName)) {
+        if (folderName === 'Archived Folders') continue;
+        const legacy = /^grade processing .+$/i.test(folderName);
+        const shortWorkspace =
+          !/^archived /i.test(folderName) && folderHasPdfsSubdir(folderPath);
+        if (legacy || shortWorkspace) {
           processingFolders.push({
             name: folderName,
             path: folderPath,

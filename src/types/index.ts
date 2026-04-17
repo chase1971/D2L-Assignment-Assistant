@@ -71,6 +71,8 @@ export interface LastProcessedAssignment {
   name: string;
   className: string;
   zipPath: string;
+  /** On-disk workspace folder basename (e.g. Quiz 4, Completion 2026-04-02) for clear/open resolution */
+  folderName?: string;
 }
 
 // Class option for dropdown

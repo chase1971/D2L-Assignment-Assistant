@@ -23,6 +23,11 @@ from student_statistics import record_assignment_submissions
 from grading_helpers import (
     make_error_response,
     extract_assignment_name_from_zip,
+    extract_quiz_folder_label_from_zip,
+    build_completion_processing_folder_basename,
+    assignment_label_from_processing_folder_name,
+    list_class_processing_folders_with_pdfs,
+    sanitize_processing_folder_basename,
     get_student_display_name,
     get_student_names_list,
     format_error_message,
@@ -133,6 +138,7 @@ class ProcessingResult:
         self.combined_pdf_path = None
         self.import_file_path = None
         self.assignment_name = None
+        self.processing_folder_name = None  # Basename on disk (e.g. Quiz 4, Completion 2026-04-02)
         self.total_students = 0
         self.processing_folder = None  # For split PDF rezip
         self.unzipped_folder = None  # For split PDF rezip
@@ -362,14 +368,11 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path):
         if not class_folder_path:
             raise Exception(f"Class folder not found: '{class_folder_name}'. Checked G:\\ and C:\\ drives.")
         
-        # Extract class code (e.g., "CA 4203") and include it in folder name
-        class_code = extract_class_code(class_folder_name)
-        if class_code:
-            processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
-        else:
-            # Fallback if class code can't be extracted
-            processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
-        
+        folder_basename = extract_quiz_folder_label_from_zip(zip_path)
+        processing_folder = os.path.join(
+            class_folder_path, sanitize_processing_folder_basename(folder_basename)
+        )
+
         unzipped_folder = choose_unzipped_folder(processing_folder, zip_path)
         pdf_output_folder = os.path.join(processing_folder, "PDFs")
         unreadable_folder = os.path.join(processing_folder, "unreadable")
@@ -418,7 +421,7 @@ def create_combined_pdf_only(drive_letter, class_folder_name, zip_path):
 def _setup_processing_environment(
     drive_letter: str,
     class_folder_name: str,
-    assignment_name: str,
+    processing_folder_basename: str,
     zip_path: Optional[str] = None,
     overwrite: bool = False
 ) -> Tuple[str, str, str, str, str]:
@@ -428,7 +431,7 @@ def _setup_processing_environment(
     Args:
         drive_letter: Drive letter (unused but kept for consistency)
         class_folder_name: Name of class folder
-        assignment_name: Name of the assignment being processed
+        processing_folder_basename: Folder name under class (e.g. Quiz 4, Completion 2026-04-02)
         overwrite: If True, delete existing folder. If False, create numbered backup.
     
     Returns:
@@ -439,14 +442,9 @@ def _setup_processing_environment(
     if not class_folder_path:
         raise Exception(f"Class folder not found: '{class_folder_name}'. Checked G:\\ and C:\\ drives.")
     
-    # Extract class code (e.g., "CA 4203") and include it in folder name
-    class_code = extract_class_code(class_folder_name)
-    if class_code:
-        processing_folder = os.path.join(class_folder_path, f"grade processing {class_code} {assignment_name}")
-    else:
-        # Fallback if class code can't be extracted
-        processing_folder = os.path.join(class_folder_path, f"grade processing {assignment_name}")
-    
+    safe_basename = sanitize_processing_folder_basename(processing_folder_basename)
+    processing_folder = os.path.join(class_folder_path, safe_basename)
+
     unzipped_folder = choose_unzipped_folder(processing_folder, zip_path)
     pdf_output_folder = os.path.join(processing_folder, "PDFs")
     unreadable_folder = os.path.join(processing_folder, "unreadable")
@@ -622,46 +620,23 @@ def run_reverse_process(drive_letter: str, class_folder_name: str, pdf_path: Opt
                 processing_folder = pdf_directory
                 log_raw(f"⚠ PDF not in 'PDFs' subfolder, using directory as processing folder", "WARN")
             
-            # Extract assignment name from the processing folder name
+            # Derive assignment label from folder basename (legacy or short names)
             folder_name = os.path.basename(processing_folder)
-            if 'grade processing' in folder_name.lower():
-                # Remove "grade processing" and class code prefix to get assignment name
-                assignment_name = re.sub(r'^grade processing\s+', '', folder_name, flags=re.IGNORECASE).strip()
-                # Remove class code at the beginning (e.g., "230-150 ")
-                assignment_name = re.sub(r'^\d+-\d+\s+', '', assignment_name).strip()
-                # Remove " backup" suffix if present
-                assignment_name = re.sub(r'\s+backup\s*$', '', assignment_name, flags=re.IGNORECASE).strip()
-                log_raw(f"   Extracted assignment name: {assignment_name}", "INFO")
-            else:
-                # Fallback: extract from PDF filename
-                pdf_filename = os.path.basename(pdf_path)
-                assignment_name = pdf_filename.replace(' combined PDF.pdf', '').replace('combined PDF.pdf', '')
-                # Remove class code pattern at the end
-                assignment_name = re.sub(r'\s+[A-Z]+\s+\d+-\d+\s*$', '', assignment_name, flags=re.IGNORECASE).strip()
-                assignment_name = re.sub(r'\s+\d+-\d+\s*$', '', assignment_name).strip()
-                log_raw(f"   Extracted assignment name from PDF: {assignment_name}", "INFO")
+            assignment_name = assignment_label_from_processing_folder_name(folder_name)
+            log_raw(f"   Extracted assignment name: {assignment_name}", "INFO")
 
         else:
             log_raw("🔍 Finding most recent processing folder...", "INFO")
-            # No PDF path provided - find the most recent processing folder
-            # Pattern matches both: "grade processing [CLASS_CODE] [ASSIGNMENT]" and "grade processing [ASSIGNMENT]"
-            pattern = re.compile(r'^grade processing (.+)$', re.IGNORECASE)
-            processing_folders = []
-            
-            for folder_name in os.listdir(class_folder_path):
-                folder_path = os.path.join(class_folder_path, folder_name)
-                if os.path.isdir(folder_path):
-                    match = pattern.match(folder_name)
-                    if match:
-                        processing_folders.append(folder_path)
-            
+            processing_folders = list_class_processing_folders_with_pdfs(class_folder_path)
+
             if processing_folders:
-                # Sort by modification time (newest first)
                 processing_folders.sort(key=lambda f: os.path.getmtime(f), reverse=True)
                 processing_folder = processing_folders[0]
-                assignment_name = os.path.basename(processing_folder).replace("grade processing ", "")
+                assignment_name = assignment_label_from_processing_folder_name(
+                    os.path.basename(processing_folder)
+                )
             else:
-                raise Exception("No grade processing folders found")
+                raise Exception("No assignment processing folders found")
         
         if not processing_folder or not os.path.exists(processing_folder):
             raise Exception(f"Processing folder not found: {processing_folder if processing_folder else 'Unknown'}")
@@ -763,10 +738,11 @@ def run_grading_process(drive_letter: str, class_folder_name: str, zip_path: str
         result.assignment_name = assignment_name
         log("QUIZ_ASSIGNMENT", name=assignment_name)
 
-        # Setup processing environment with assignment-specific folder
+        folder_basename = extract_quiz_folder_label_from_zip(zip_path)
         class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder = _setup_processing_environment(
-            drive_letter, class_folder_name, assignment_name, zip_path
+            drive_letter, class_folder_name, folder_basename, zip_path
         )
+        result.processing_folder_name = os.path.basename(processing_folder)
 
         # Load Import File (skip validation for process quizzes)
         import_df, import_file_path = load_import_file(class_folder_path, skip_validation=True)
@@ -900,10 +876,11 @@ def run_completion_process(drive_letter: str, class_folder_name: str, zip_path: 
         assignment_name = extract_assignment_name_from_zip(zip_path)
         result.assignment_name = assignment_name
 
-        # Setup processing environment with assignment-specific folder
+        folder_basename = build_completion_processing_folder_basename()
         class_folder_path, processing_folder, unzipped_folder, pdf_output_folder, unreadable_folder = _setup_processing_environment(
-            drive_letter, class_folder_name, assignment_name, zip_path
+            drive_letter, class_folder_name, folder_basename, zip_path
         )
+        result.processing_folder_name = os.path.basename(processing_folder)
 
         result.import_file_path = import_file_path
         result.total_students = len(import_df)
