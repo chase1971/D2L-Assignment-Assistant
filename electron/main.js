@@ -4,7 +4,7 @@
  * This file handles the Electron window and starts the backend server.
  */
 
-const { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker, screen } = require('electron');
 const path = require('path');
 const { spawn, fork, exec } = require('child_process');
 const { autoUpdater } = require('electron-updater');
@@ -15,6 +15,26 @@ let powerSaveBlockerId = null;
 
 // Determine if we're in development or production
 const isDev = !app.isPackaged;
+
+function getLaunchDisplayBounds() {
+  const displays = screen.getAllDisplays();
+  const requestedIndex = Number.parseInt(process.env.LAUNCH_MONITOR_INDEX || '', 10);
+
+  if (Number.isInteger(requestedIndex) && displays[requestedIndex]) {
+    return displays[requestedIndex].bounds;
+  }
+
+  const x = Number.parseInt(process.env.LAUNCH_MONITOR_X || '', 10);
+  const y = Number.parseInt(process.env.LAUNCH_MONITOR_Y || '', 10);
+  const width = Number.parseInt(process.env.LAUNCH_MONITOR_WIDTH || '', 10);
+  const height = Number.parseInt(process.env.LAUNCH_MONITOR_HEIGHT || '', 10);
+
+  if ([x, y, width, height].every(Number.isFinite)) {
+    return { x, y, width, height };
+  }
+
+  return screen.getPrimaryDisplay().bounds;
+}
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, let user decide
@@ -192,9 +212,13 @@ function createWindow() {
   console.log('__dirname:', __dirname);
   console.log('app.getAppPath():', app.getAppPath());
   
+  const launchDisplayBounds = getLaunchDisplayBounds();
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    x: launchDisplayBounds.x + 40,
+    y: launchDisplayBounds.y + 40,
     minWidth: 900,
     minHeight: 600,
     frame: false,           // Frameless/borderless window
