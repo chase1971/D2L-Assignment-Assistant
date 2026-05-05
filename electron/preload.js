@@ -6,19 +6,23 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  // Window controls
-  closeWindow: () => ipcRenderer.invoke('close-window'),
-  reloadWindow: () => ipcRenderer.invoke('reload-window'),
-  minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
-  maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
-  
-  // File dialog
-  showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
-  
-  // Logging
-  sendLog: (message, type = 'info') => {
-    console.log(`[${type.toUpperCase()}] ${message}`);
-  }
-});
+try {
+  contextBridge.exposeInMainWorld('electronAPI', {
+    // Window controls
+    closeWindow: () => ipcRenderer.invoke('close-window'),
+    reloadWindow: () => ipcRenderer.invoke('reload-window'),
+    minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+    maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
+
+    // File dialog
+    showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
+
+    // Logging
+    sendLog: (message, type = 'info') => {
+      console.log(`[${type.toUpperCase()}] ${message}`);
+    },
+  });
+} catch (e) {
+  console.error('[preload] exposeInMainWorld(electronAPI) failed:', e);
+}
 
